@@ -1,6 +1,13 @@
 package com.horizon.launcher
 
+import android.annotation.SuppressLint
+import android.app.ActivityOptions
+import android.app.AlarmManager
 import android.appwidget.AppWidgetProviderInfo
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.view.HapticFeedbackConstants
+import android.view.View
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -8,6 +15,7 @@ import android.provider.AlarmClock
 import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -51,6 +59,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -74,6 +85,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +104,8 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
@@ -97,7 +113,28 @@ import kotlin.math.roundToInt
 private val ClockShadow = Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 10f)
 
 @Composable
-fun LauncherScreen(vm: LauncherViewModel, onAddWidget: (AppWidgetProviderInfo) -> Unit) {
+fun LauncherScreen(
+    vm: LauncherViewModel,
+    onAddWidget: (AppWidgetProviderInfo) -> Unit,
+    onBlur: (Float) -> Unit,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    val settings by vm.settings.collectAsState()
+    CompositionLocalProvider(LocalSettings provides settings) {
+        LauncherContent(vm, settings, onAddWidget, onBlur, onBackup, onRestore)
+    }
+}
+
+@Composable
+private fun LauncherContent(
+    vm: LauncherViewModel,
+    settings: LauncherSettings,
+    onAddWidget: (AppWidgetProviderInfo) -> Unit,
+    onBlur: (Float) -> Unit,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
+) {
     val apps by vm.apps.collectAsState()
     val index by vm.appIndex.collectAsState()
     val items by vm.items.collectAsState()
@@ -107,30 +144,75 @@ fun LauncherScreen(vm: LauncherViewModel, onAddWidget: (AppWidgetProviderInfo) -
     val openFolderId by vm.openFolder.collectAsState()
     val pickerOpen by vm.widgetPicker.collectAsState()
     val homeSignal by vm.homeSignal.collectAsState()
+    val settingsOpen by vm.settingsOpen.collectAsState()
 
     val drag = remember { DragController() }
-    val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    val visibleApps = remember(apps, settings.hidden) { apps.filter { it.key !in settings.hidden } }
 
     val pageCount = (items.maxOfOrNull { it.page } ?: 0) + 1 + (if (drag.active) 1 else 0)
     val pageCountState = rememberUpdatedState(pageCount)
     val pager = rememberPagerState { pageCountState.value }
 
-    LaunchedEffect(pager.currentPage) { vm.currentPage = pager.currentPage }
+    var lastPage by remember { mutableStateOf(-1) }
+    LaunchedEffect(pager.currentPage) {
+        vm.currentPage = pager.currentPage
+        if (lastPage != -1 && lastPage != pager.currentPage) view.tick()
+        lastPage = pager.currentPage
+    }
     LaunchedEffect(homeSignal) { if (homeSignal > 0) pager.animateScrollToPage(0) }
 
-    val progress by animateFloatAsState(
-        targetValue = if (drawerOpen) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 500f),
-        label = "drawer",
-    )
+    // The drawer position: follows your finger while swiping, springs open or closed after.
+    val drawer = remember { Animatable(0f) }
+    LaunchedEffect(drawerOpen) {
+        drawer.animateTo(if (drawerOpen) 1f else 0f, spring(dampingRatio = 0.85f, stiffness = 420f))
+    }
+    val progress = drawer.value
+    val screenHeightPx = with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+    val onSwipe: (Float) -> Unit = { dy ->
+        if (!drawerOpen) scope.launch { drawer.snapTo((drawer.value - dy / (screenHeightPx * 0.6f)).coerceIn(0f, 1f)) }
+    }
+    val onSwipeEnd: (Float, Float) -> Unit = { velocityY, totalDy ->
+        when {
+            drawer.value > 0.3f || (velocityY < -1200f && drawer.value > 0.02f) -> {
+                if (!drawerOpen) view.tick()
+                vm.openDrawer()
+                scope.launch { drawer.animateTo(1f, spring(dampingRatio = 0.85f, stiffness = 420f, visibilityThreshold = 0.001f)) }
+            }
+            else -> {
+                scope.launch { drawer.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = 500f)) }
+                if (totalDy > 120f && drawer.value < 0.05f) expandNotifications(view)
+            }
+        }
+    }
     val folderAlpha by animateFloatAsState(
         targetValue = if (openFolderId != null) 1f else 0f,
         animationSpec = tween(160),
         label = "folder",
     )
 
-    BackHandler(enabled = drawerOpen || openFolderId != null || pickerOpen) {
+    LaunchedEffect(settings.wallpaperBlur) {
+        if (!settings.wallpaperBlur) {
+            onBlur(0f)
+            return@LaunchedEffect
+        }
+        snapshotFlow { maxOf(drawer.value, folderAlpha) }
+            .distinctUntilChanged()
+            .collect { onBlur(it) }
+    }
+
+    // A light tick each time the drop spot moves to a new cell while dragging
+    LaunchedEffect(drag.active) {
+        if (!drag.active) return@LaunchedEffect
+        snapshotFlow { if (drag.overGrid()) drag.cellAt() else null }
+            .distinctUntilChanged()
+            .collect { if (it != null) view.tick() }
+    }
+
+    BackHandler(enabled = drawerOpen || openFolderId != null || pickerOpen || settingsOpen) {
         when {
+            settingsOpen -> vm.openSettings(false)
             pickerOpen -> vm.showWidgetPicker(false)
             openFolderId != null -> vm.closeFolder()
             else -> vm.closeDrawer()
@@ -138,7 +220,18 @@ fun LauncherScreen(vm: LauncherViewModel, onAddWidget: (AppWidgetProviderInfo) -
     }
 
     val launch: (AppEntry) -> Unit = { app ->
-        vm.launch(app)
+        val b = drag.lastTapBounds
+        val rect = if (b.width > 0f) {
+            android.graphics.Rect(b.left.roundToInt(), b.top.roundToInt(), b.right.roundToInt(), b.bottom.roundToInt())
+        } else {
+            null
+        }
+        val opts = rect?.let {
+            runCatching {
+                ActivityOptions.makeScaleUpAnimation(view, it.left, it.top, it.width(), it.height()).toBundle()
+            }.getOrNull()
+        }
+        vm.launch(app, rect, opts)
         vm.closeDrawer()
         vm.closeFolder()
     }
@@ -160,7 +253,7 @@ fun LauncherScreen(vm: LauncherViewModel, onAddWidget: (AppWidgetProviderInfo) -
                 }
                 else -> DropTarget.None
             }
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            view.confirm()
             vm.drop(payload, target)
         }
     }
@@ -202,6 +295,8 @@ fun LauncherScreen(vm: LauncherViewModel, onAddWidget: (AppWidgetProviderInfo) -
             dockKeys = dockKeys,
             onLaunch = launch,
             onDrop = finishDrag,
+            onSwipe = onSwipe,
+            onSwipeEnd = onSwipeEnd,
             modifier = Modifier.graphicsLayer {
                 alpha = 1f - progress
                 scaleX = 1f - 0.06f * progress
@@ -211,15 +306,16 @@ fun LauncherScreen(vm: LauncherViewModel, onAddWidget: (AppWidgetProviderInfo) -
 
         if (progress > 0.001f || drag.payload is DragPayload.FromDrawer) {
             AppDrawer(
-                apps = apps,
+                apps = visibleApps,
                 vm = vm,
                 drag = drag,
                 autoFocus = searchFocus,
                 onLaunch = launch,
                 onDrop = finishDrag,
+                blurOn = settings.wallpaperBlur,
                 modifier = Modifier.graphicsLayer {
-                    translationY = (1f - progress) * size.height * 0.35f
-                    alpha = progress
+                    translationY = (1f - progress) * size.height * 0.4f
+                    alpha = (progress * 1.6f).coerceAtMost(1f)
                 },
             )
         }
@@ -247,6 +343,16 @@ fun LauncherScreen(vm: LauncherViewModel, onAddWidget: (AppWidgetProviderInfo) -
                     onAddWidget(info)
                 },
                 onClose = { vm.showWidgetPicker(false) },
+            )
+        }
+
+        if (settingsOpen) {
+            SettingsScreen(
+                vm = vm,
+                apps = apps,
+                onBackup = onBackup,
+                onRestore = onRestore,
+                onClose = { vm.openSettings(false) },
             )
         }
 
@@ -316,24 +422,41 @@ private fun HomeScreen(
     dockKeys: List<String>,
     onLaunch: (AppEntry) -> Unit,
     onDrop: () -> Unit,
+    onSwipe: (Float) -> Unit,
+    onSwipeEnd: (Float, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val settings = LocalSettings.current
     var menu by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
+    val tracker = remember { VelocityTracker() }
+    val swipe by rememberUpdatedState(onSwipe)
+    val swipeEnd by rememberUpdatedState(onSwipeEnd)
 
     Box(
         modifier
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
-                    onDragStart = { dragTotal = 0f },
+                    onDragStart = {
+                        dragTotal = 0f
+                        tracker.resetTracking()
+                    },
                     onDragEnd = {
-                        if (dragTotal < -60f) vm.openDrawer()
+                        swipeEnd(tracker.calculateVelocity().y, dragTotal)
                         dragTotal = 0f
                     },
-                ) { _, dy -> dragTotal += dy }
+                    onDragCancel = {
+                        swipeEnd(0f, 0f)
+                        dragTotal = 0f
+                    },
+                ) { change, dy ->
+                    tracker.addPosition(change.uptimeMillis, change.position)
+                    dragTotal += dy
+                    swipe(dy)
+                }
             }
             .pointerInput(Unit) {
                 detectTapGestures(onLongPress = {
@@ -359,8 +482,8 @@ private fun HomeScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding(),
         ) {
-            Spacer(Modifier.height(32.dp))
-            ClockHeader(Modifier.padding(horizontal = 24.dp))
+            Spacer(Modifier.height(if (settings.compactClock) 20.dp else 32.dp))
+            ClockHeader(compact = settings.compactClock, modifier = Modifier.padding(horizontal = 24.dp))
             Spacer(Modifier.height(12.dp))
 
             HorizontalPager(
@@ -395,8 +518,10 @@ private fun HomeScreen(
                 onDrop = onDrop,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
-            Spacer(Modifier.height(12.dp))
-            SearchPill(Modifier.padding(horizontal = 16.dp)) { vm.openDrawer(focusSearch = true) }
+            if (settings.showSearch) {
+                Spacer(Modifier.height(12.dp))
+                SearchPill(Modifier.padding(horizontal = 16.dp)) { vm.openDrawer(focusSearch = true) }
+            }
             Spacer(Modifier.height(14.dp))
         }
 
@@ -409,8 +534,7 @@ private fun HomeScreen(
                     MenuAction("Wallpaper & style") {
                         context.startSafely(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
                     },
-                    MenuAction("Default home app") { context.startSafely(Intent(Settings.ACTION_HOME_SETTINGS)) },
-                    MenuAction("All apps") { vm.openDrawer() },
+                    MenuAction("Horizon settings") { vm.openSettings(true) },
                 ),
             )
         }
@@ -473,7 +597,7 @@ private fun HomePage(
                             val app = item.apps.firstOrNull()?.let { index[it] }
                             if (app != null) {
                                 LauncherIcon(
-                                    label = app.label,
+                                    label = if (LocalSettings.current.homeLabels) app.label else null,
                                     drag = drag,
                                     payload = DragPayload.FromHome(item.id),
                                     onTap = { onLaunch(app) },
@@ -489,7 +613,7 @@ private fun HomePage(
                         TYPE_FOLDER -> {
                             val folderApps = item.apps.mapNotNull { index[it] }
                             LauncherIcon(
-                                label = item.name.ifBlank { "Folder" },
+                                label = if (LocalSettings.current.homeLabels) item.name.ifBlank { "Folder" } else null,
                                 drag = drag,
                                 payload = DragPayload.FromHome(item.id),
                                 onTap = { vm.openFolder(item.id) },
@@ -541,7 +665,7 @@ private fun PageDots(count: Int, current: Int) {
 }
 
 @Composable
-private fun ClockHeader(modifier: Modifier = Modifier) {
+private fun ClockHeader(compact: Boolean, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) {
@@ -552,23 +676,53 @@ private fun ClockHeader(modifier: Modifier = Modifier) {
     }
     val timePattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm"
     val time = now.format(DateTimeFormatter.ofPattern(timePattern))
-    val date = now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d"))
+    val date = now.format(DateTimeFormatter.ofPattern(if (compact) "EEE, MMM d" else "EEEE, MMMM d"))
+    val glance = remember(now) { atAGlance(context, timePattern) }
+    val openClock = { context.startSafely(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
+    val openCalendar = {
+        context.startSafely(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALENDAR))
+    }
 
     Column(modifier) {
-        Text(
-            text = time,
-            color = Color.White,
-            style = TextStyle(fontSize = 76.sp, fontWeight = FontWeight.Light, letterSpacing = (-2).sp, shadow = ClockShadow),
-            modifier = Modifier.clickable { context.startSafely(Intent(AlarmClock.ACTION_SHOW_ALARMS)) },
-        )
-        Text(
-            text = date,
-            color = Color.White.copy(alpha = 0.9f),
-            style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
-            modifier = Modifier.clickable {
-                context.startSafely(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALENDAR))
-            },
-        )
+        if (compact) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = time,
+                    color = Color.White,
+                    style = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Normal, letterSpacing = (-1).sp, shadow = ClockShadow),
+                    modifier = Modifier.clickable(onClick = openClock),
+                )
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    text = date,
+                    color = Color.White.copy(alpha = 0.92f),
+                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
+                    modifier = Modifier.padding(bottom = 8.dp).clickable(onClick = openCalendar),
+                )
+            }
+        } else {
+            Text(
+                text = time,
+                color = Color.White,
+                style = TextStyle(fontSize = 80.sp, fontWeight = FontWeight.Light, letterSpacing = (-2.5).sp, shadow = ClockShadow),
+                modifier = Modifier.clickable(onClick = openClock),
+            )
+            Text(
+                text = date,
+                color = Color.White.copy(alpha = 0.92f),
+                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
+                modifier = Modifier.clickable(onClick = openCalendar),
+            )
+        }
+        if (glance.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = glance.joinToString("   ·   "),
+                color = Color.White.copy(alpha = 0.8f),
+                style = TextStyle(fontSize = 14.sp, shadow = ClockShadow),
+                modifier = Modifier.clickable(onClick = openClock),
+            )
+        }
     }
 }
 
@@ -645,6 +799,7 @@ private fun AppDrawer(
     autoFocus: Boolean,
     onLaunch: (AppEntry) -> Unit,
     onDrop: () -> Unit,
+    blurOn: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -696,7 +851,7 @@ private fun AppDrawer(
         modifier
             .fillMaxSize()
             .swallowTouches()
-            .background(Color(0xF00D1016))
+            .background(if (blurOn) Color(0xB80D1016) else Color(0xF00D1016))
             .statusBarsPadding()
             .imePadding(),
     ) {
@@ -780,4 +935,56 @@ private fun AppDrawer(
 
 fun Context.startSafely(intent: Intent) {
     runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+/** Next alarm (if within a day) and charging status, for the line under the date. */
+private fun atAGlance(context: Context, timePattern: String): List<String> {
+    val parts = mutableListOf<String>()
+    runCatching {
+        val am = context.getSystemService(AlarmManager::class.java)
+        val next = am.nextAlarmClock
+        if (next != null) {
+            val millis = next.triggerTime - System.currentTimeMillis()
+            if (millis in 0..(24L * 60 * 60 * 1000)) {
+                val t = java.time.Instant.ofEpochMilli(next.triggerTime)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("$timePattern a".replace("HH:mm a", "HH:mm")))
+                parts += "Alarm $t"
+            }
+        }
+    }
+    runCatching {
+        val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        if (battery != null) {
+            val status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+            val pct = if (level >= 0 && scale > 0) level * 100 / scale else -1
+            when {
+                status == BatteryManager.BATTERY_STATUS_CHARGING && pct >= 0 -> parts += "Charging · $pct%"
+                status == BatteryManager.BATTERY_STATUS_FULL -> parts += "Fully charged"
+                pct in 0..15 -> parts += "Battery $pct%"
+            }
+        }
+    }
+    return parts
+}
+
+private fun View.tick() {
+    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+}
+
+private fun View.confirm() {
+    performHapticFeedback(
+        if (android.os.Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY,
+    )
+}
+
+/** Swipe down on the home screen opens the notification shade. */
+@SuppressLint("WrongConstant")
+private fun expandNotifications(view: View) {
+    runCatching {
+        val service = view.context.getSystemService("statusbar")
+        Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(service)
+    }
 }

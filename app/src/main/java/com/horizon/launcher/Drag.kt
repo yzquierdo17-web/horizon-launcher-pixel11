@@ -33,6 +33,9 @@ class DragController {
     /** True while a finger is down on any icon or widget (blocks the home long-press menu). */
     var itemPressed = false
 
+    /** Where the last tapped icon was, for the app-opening animation. */
+    var lastTapBounds = Rect.Zero
+
     var gridBounds = Rect.Zero
     var dockBounds = Rect.Zero
     var removeBounds by mutableStateOf(Rect.Zero)

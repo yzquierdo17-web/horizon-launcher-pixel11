@@ -7,6 +7,13 @@ import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.LauncherApps
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.drawable.AdaptiveIconDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Process
 import android.os.UserHandle
@@ -23,6 +30,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.ceil
 
 data class AppEntry(
@@ -56,6 +65,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _dock = MutableStateFlow(decodeKeys(prefs.getString(KEY_DOCK, null)))
     val dock: StateFlow<List<String>> = _dock.asStateFlow()
+
+    private val _settings = MutableStateFlow(
+        LauncherSettings.fromJson(runCatching { JSONObject(prefs.getString(KEY_SETTINGS, "{}") ?: "{}") }.getOrNull()),
+    )
+    val settings: StateFlow<LauncherSettings> = _settings.asStateFlow()
+
+    private val _settingsOpen = MutableStateFlow(false)
+    val settingsOpen: StateFlow<Boolean> = _settingsOpen.asStateFlow()
 
     private val _drawerOpen = MutableStateFlow(false)
     val drawerOpen: StateFlow<Boolean> = _drawerOpen.asStateFlow()
@@ -98,20 +115,49 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadApps(): List<AppEntry> {
         val ctx = getApplication<Application>()
-        val px = (64 * ctx.resources.displayMetrics.density).toInt()
+        val px = (72 * ctx.resources.displayMetrics.density).toInt()
+        val themed = _settings.value.themedIcons
+        val me = Process.myUserHandle()
         return userManager.userProfiles
             .flatMap { user -> launcherApps.getActivityList(null, user) }
             .filter { it.componentName.packageName != ctx.packageName }
             .map { info ->
+                val themedIcon = if (themed && info.user == me) {
+                    runCatching { themedBitmap(ctx, info.getIcon(0), px) }.getOrNull()
+                } else {
+                    null
+                }
                 AppEntry(
                     label = info.label.toString(),
                     component = info.componentName,
                     user = info.user,
                     serial = userManager.getSerialNumberForUser(info.user),
-                    icon = info.getBadgedIcon(0).toBitmap(px, px).asImageBitmap(),
+                    icon = (themedIcon ?: info.getBadgedIcon(0).toBitmap(px, px)).asImageBitmap(),
                 )
             }
             .sortedBy { it.label.lowercase() }
+    }
+
+    /** Pixel-style themed icon: the app's monochrome layer tinted with wallpaper colors. */
+    private fun themedBitmap(ctx: Context, drawable: Drawable, px: Int): Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+        val mono = (drawable as? AdaptiveIconDrawable)?.monochrome ?: return null
+        val bg = ctx.getColor(android.R.color.system_accent1_800)
+        val fg = ctx.getColor(android.R.color.system_accent1_100)
+        val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val circle = Path().apply { addCircle(px / 2f, px / 2f, px / 2f, Path.Direction.CW) }
+        canvas.drawPath(circle, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bg })
+        canvas.save()
+        canvas.clipPath(circle)
+        val layer = mono.mutate()
+        layer.setTint(fg)
+        // The monochrome layer is 108dp with a 72dp visible area, so draw it 1.5x and centered.
+        val inset = (px * 0.25f).toInt()
+        layer.setBounds(-inset, -inset, px + inset, px + inset)
+        layer.draw(canvas)
+        canvas.restore()
+        return bmp
     }
 
     private fun ensureDefaultDock(list: List<AppEntry>) {
@@ -146,9 +192,46 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (items != _items.value) setItems(items)
     }
 
-    fun launch(app: AppEntry) {
-        runCatching { launcherApps.startMainActivity(app.component, app.user, null, null) }
+    fun launch(app: AppEntry, sourceBounds: Rect? = null, options: android.os.Bundle? = null) {
+        runCatching { launcherApps.startMainActivity(app.component, app.user, sourceBounds, options) }
+            .onFailure { runCatching { launcherApps.startMainActivity(app.component, app.user, null, null) } }
     }
+
+    // ---------- Settings ----------
+
+    fun openSettings(open: Boolean) {
+        _settingsOpen.value = open
+    }
+
+    fun updateSettings(transform: (LauncherSettings) -> LauncherSettings) {
+        val old = _settings.value
+        val new = transform(old)
+        if (new == old) return
+        _settings.value = new
+        prefs.edit().putString(KEY_SETTINGS, new.toJson().toString()).apply()
+        if (old.themedIcons != new.themedIcons) refresh()
+    }
+
+    fun exportLayout(): String = JSONObject()
+        .put("app", "Horizon")
+        .put("version", 1)
+        .put("items", JSONArray(encodeItems(_items.value)))
+        .put("dock", JSONArray(_dock.value))
+        .put("settings", _settings.value.toJson())
+        .toString(2)
+
+    fun importLayout(text: String): Boolean = runCatching {
+        val o = JSONObject(text)
+        val items = decodeItems(o.getJSONArray("items").toString())
+            .filter { it.type != TYPE_WIDGET || widgetManager.getAppWidgetInfo(it.widgetId) != null }
+        val dock = decodeKeys(o.getJSONArray("dock").toString())
+        setItems(items)
+        setDock(dock)
+        o.optJSONObject("settings")?.let { js -> updateSettings { LauncherSettings.fromJson(js) } }
+        val list = _apps.value
+        if (list.isNotEmpty()) cleanup(list)
+        true
+    }.getOrDefault(false)
 
     fun openAppInfo(app: AppEntry) {
         runCatching { launcherApps.startAppDetailsActivity(app.component, app.user, null, null) }
@@ -179,10 +262,11 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onHomePressed(alreadyOnTop: Boolean) {
-        val wasOverlay = _drawerOpen.value || _openFolder.value != null || _widgetPicker.value
+        val wasOverlay = _drawerOpen.value || _openFolder.value != null || _widgetPicker.value || _settingsOpen.value
         closeDrawer()
         closeFolder()
         showWidgetPicker(false)
+        openSettings(false)
         if (alreadyOnTop && !wasOverlay) _homeSignal.value += 1
     }
 
@@ -403,6 +487,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         const val WIDGET_HOST_ID = 1024
         private const val KEY_ITEMS = "home_items"
         private const val KEY_DOCK = "dock_keys"
+        private const val KEY_SETTINGS = "settings"
         private val DEFAULT_DOCK = listOf(
             "com.google.android.dialer",
             "com.google.android.apps.messaging",

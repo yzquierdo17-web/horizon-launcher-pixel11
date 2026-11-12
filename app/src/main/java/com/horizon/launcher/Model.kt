@@ -147,3 +147,38 @@ fun findFreeAnywhere(items: List<HomeItem>, startPage: Int, sx: Int, sy: Int): T
     }
     return Triple(lastPage + 1, 0, 0)
 }
+
+data class LauncherSettings(
+    val themedIcons: Boolean = false,
+    val iconScale: Float = 1f,
+    val homeLabels: Boolean = true,
+    val compactClock: Boolean = false,
+    val showSearch: Boolean = true,
+    val wallpaperBlur: Boolean = true,
+    val hidden: Set<String> = emptySet(),
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("themed", themedIcons)
+        .put("scale", iconScale.toDouble())
+        .put("labels", homeLabels)
+        .put("compact", compactClock)
+        .put("search", showSearch)
+        .put("blur", wallpaperBlur)
+        .put("hidden", JSONArray(hidden.toList()))
+
+    companion object {
+        fun fromJson(o: JSONObject?): LauncherSettings {
+            if (o == null) return LauncherSettings()
+            val h = o.optJSONArray("hidden") ?: JSONArray()
+            return LauncherSettings(
+                themedIcons = o.optBoolean("themed", false),
+                iconScale = o.optDouble("scale", 1.0).toFloat(),
+                homeLabels = o.optBoolean("labels", true),
+                compactClock = o.optBoolean("compact", false),
+                showSearch = o.optBoolean("search", true),
+                wallpaperBlur = o.optBoolean("blur", true),
+                hidden = (0 until h.length()).map { h.getString(it) }.toSet(),
+            )
+        }
+    }
+}

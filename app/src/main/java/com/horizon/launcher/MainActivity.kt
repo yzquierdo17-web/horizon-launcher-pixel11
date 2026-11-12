@@ -6,6 +6,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -21,6 +24,24 @@ class MainActivity : ComponentActivity() {
 
     private val vm: LauncherViewModel by viewModels()
     private var pendingWidgetId = -1
+    private var lastBlur = -1
+
+    private val backupLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val ok = runCatching {
+            contentResolver.openOutputStream(uri)?.use { it.write(vm.exportLayout().toByteArray()) } != null
+        }.getOrDefault(false)
+        toast(if (ok) "Layout backed up" else "Couldn't save the backup")
+    }
+
+    private val restoreLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val text = runCatching {
+            contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+        }.getOrNull()
+        val ok = text != null && vm.importLayout(text)
+        toast(if (ok) "Layout restored" else "That file isn't a Horizon backup")
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,7 +52,13 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             HorizonTheme {
-                LauncherScreen(vm, onAddWidget = ::addWidget)
+                LauncherScreen(
+                    vm = vm,
+                    onAddWidget = ::addWidget,
+                    onBlur = ::setWallpaperBlur,
+                    onBackup = { backupLauncher.launch("horizon-layout.json") },
+                    onRestore = { restoreLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                )
             }
         }
     }
@@ -61,6 +88,25 @@ class MainActivity : ComponentActivity() {
         val alreadyOnTop = hasWindowFocus()
         super.onNewIntent(intent)
         vm.onHomePressed(alreadyOnTop)
+    }
+
+    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    /** Blurs the wallpaper behind Horizon (Android 12+ when the device allows cross-window blur). */
+    private fun setWallpaperBlur(fraction: Float) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        runCatching {
+            if (!windowManager.isCrossWindowBlurEnabled) return
+            val radius = (fraction.coerceIn(0f, 1f) * 40f * resources.displayMetrics.density).toInt()
+            if (radius == lastBlur) return
+            lastBlur = radius
+            if (radius > 0) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            }
+            window.attributes = window.attributes.apply { blurBehindRadius = radius }
+        }
     }
 
     // ---------- Adding widgets ----------

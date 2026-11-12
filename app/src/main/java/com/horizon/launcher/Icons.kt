@@ -16,6 +16,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -42,6 +45,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 val IconSize = 56.dp
+val LocalSettings = compositionLocalOf { LauncherSettings() }
+
+@Composable
+fun scaledIconSize(): Dp = IconSize * LocalSettings.current.iconScale
 val LabelShadow = Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 1.5f), 6f)
 
 data class MenuAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)
@@ -65,6 +72,8 @@ fun LauncherIcon(
     val haptic = LocalHapticFeedback.current
     var menuOpen by remember { mutableStateOf(false) }
     var origin by remember { mutableStateOf(Offset.Zero) }
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+    val iconSize = scaledIconSize()
     val tap by rememberUpdatedState(onTap)
     val started by rememberUpdatedState(onDragStarted)
     val dropped by rememberUpdatedState(onDrop)
@@ -76,10 +85,16 @@ fun LauncherIcon(
         Column(
             Modifier
                 .clip(RoundedCornerShape(18.dp))
-                .onGloballyPositioned { origin = it.positionInRoot() }
+                .onGloballyPositioned {
+                    origin = it.positionInRoot()
+                    bounds = it.boundsInRoot()
+                }
                 .launcherGestures(
                     drag = drag,
-                    onTap = { tap() },
+                    onTap = {
+                        drag.lastTapBounds = bounds
+                        tap()
+                    },
                     onLongPress = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         menuOpen = true
@@ -90,7 +105,7 @@ fun LauncherIcon(
                         drag.start(
                             payload = currentPayload,
                             rootPosition = origin + local,
-                            size = DpSize(IconSize, IconSize),
+                            size = DpSize(iconSize, iconSize),
                         ) { iconContent() }
                         started()
                     },
@@ -100,7 +115,7 @@ fun LauncherIcon(
                 .padding(vertical = 6.dp, horizontal = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.size(IconSize), contentAlignment = Alignment.Center) { icon() }
+            Box(Modifier.size(iconSize), contentAlignment = Alignment.Center) { icon() }
             if (label != null) {
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -138,16 +153,17 @@ fun ItemMenu(expanded: Boolean, onDismiss: () -> Unit, actions: List<MenuAction>
 }
 
 @Composable
-fun AppImage(app: AppEntry, size: Dp = IconSize) {
+fun AppImage(app: AppEntry, size: Dp = scaledIconSize()) {
     Image(bitmap = app.icon, contentDescription = app.label, modifier = Modifier.size(size))
 }
 
 /** 2x2 preview of the first four apps in a folder. */
 @Composable
 fun FolderPreview(apps: List<AppEntry>) {
+    val size = scaledIconSize()
     Box(
         Modifier
-            .size(IconSize)
+            .size(size)
             .clip(RoundedCornerShape(18.dp))
             .background(Color.White.copy(alpha = 0.24f))
             .padding(7.dp),
@@ -155,7 +171,7 @@ fun FolderPreview(apps: List<AppEntry>) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             apps.take(4).chunked(2).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    row.forEach { AppImage(it, 19.dp) }
+                    row.forEach { AppImage(it, (size - 18.dp) / 2) }
                 }
             }
         }
