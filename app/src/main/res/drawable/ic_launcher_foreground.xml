@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Half sun rising over a horizon line -->
+    <path
+        android:fillColor="#FFB86B"
+        android:pathData="M38,58a16,16 0,0 1,32 0z" />
+    <path
+        android:fillColor="#E8EEF7"
+        android:pathData="M32,61h44v4h-44z" />
+    <path
+        android:fillColor="#E8EEF7"
+        android:fillAlpha="0.5"
+        android:pathData="M42,69h24v3h-24z" />
+</vector>
