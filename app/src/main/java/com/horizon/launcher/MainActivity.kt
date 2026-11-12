@@ -1,5 +1,7 @@
 package com.horizon.launcher
 
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
 import android.graphics.Color
 import android.os.Build
@@ -18,18 +20,35 @@ import androidx.compose.ui.platform.LocalContext
 class MainActivity : ComponentActivity() {
 
     private val vm: LauncherViewModel by viewModels()
+    private var pendingWidgetId = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingWidgetId = savedInstanceState?.getInt(KEY_PENDING, -1) ?: -1
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         setContent {
             HorizonTheme {
-                LauncherScreen(vm)
+                LauncherScreen(vm, onAddWidget = ::addWidget)
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_PENDING, pendingWidgetId)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        runCatching { vm.widgetHost.startListening() }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        runCatching { vm.widgetHost.stopListening() }
     }
 
     override fun onResume() {
@@ -37,10 +56,76 @@ class MainActivity : ComponentActivity() {
         vm.refresh()
     }
 
-    // Pressing Home while Horizon is showing brings it back to the home page.
+    // Pressing Home while Horizon is showing closes overlays, then goes to the first page.
     override fun onNewIntent(intent: Intent) {
+        val alreadyOnTop = hasWindowFocus()
         super.onNewIntent(intent)
-        vm.closeDrawer()
+        vm.onHomePressed(alreadyOnTop)
+    }
+
+    // ---------- Adding widgets ----------
+
+    private fun addWidget(info: AppWidgetProviderInfo) {
+        val id = vm.widgetHost.allocateAppWidgetId()
+        pendingWidgetId = id
+        val bound = runCatching {
+            vm.widgetManager.bindAppWidgetIdIfAllowed(id, info.profile, info.provider, null)
+        }.getOrDefault(false)
+        if (bound) {
+            configureOrPlace(id)
+        } else {
+            val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile)
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQ_BIND)
+        }
+    }
+
+    private fun configureOrPlace(id: Int) {
+        val info = vm.widgetManager.getAppWidgetInfo(id)
+        if (info == null) {
+            discardPending(id)
+            return
+        }
+        if (info.configure != null) {
+            val started = runCatching {
+                vm.widgetHost.startAppWidgetConfigureActivityForResult(this, id, 0, REQ_CONFIGURE, null)
+            }.isSuccess
+            if (started) return
+        }
+        vm.placeWidget(id, info)
+        pendingWidgetId = -1
+    }
+
+    private fun discardPending(id: Int) {
+        runCatching { vm.widgetHost.deleteAppWidgetId(id) }
+        pendingWidgetId = -1
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        val id = data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingWidgetId) ?: pendingWidgetId
+        if (id == -1) return
+        when (requestCode) {
+            REQ_BIND -> if (resultCode == RESULT_OK) configureOrPlace(id) else discardPending(id)
+            REQ_CONFIGURE -> if (resultCode == RESULT_OK) {
+                val info = vm.widgetManager.getAppWidgetInfo(id)
+                if (info != null) vm.placeWidget(id, info) else discardPending(id)
+                pendingWidgetId = -1
+            } else {
+                discardPending(id)
+            }
+        }
+    }
+
+    companion object {
+        private const val KEY_PENDING = "pending_widget"
+        private const val REQ_BIND = 11
+        private const val REQ_CONFIGURE = 12
     }
 }
 
