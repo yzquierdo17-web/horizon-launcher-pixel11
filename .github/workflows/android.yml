@@ -21,9 +21,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       # No gradle-wrapper.jar, so install Gradle directly
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
