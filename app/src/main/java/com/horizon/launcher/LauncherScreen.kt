@@ -24,7 +24,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material3.Checkbox
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.Work
@@ -65,6 +67,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -945,22 +949,27 @@ private fun AppDrawer(
     val usage by vm.usage.collectAsState()
     var query by remember { mutableStateOf("") }
 
-    // Work and Personal tabs when the phone has a work profile. Opens on Work during work hours.
+    // Work and Personal tabs. Work holds work-profile apps plus any app you add yourself.
+    // Opens on Work during work hours. Search always covers both.
     var workTab by remember(workTime) { mutableStateOf(workTime) }
-    val showTabs = work != null && query.isBlank()
+    var choosingWorkApps by remember { mutableStateOf(false) }
+    val workKeys = settings.workApps
+    fun AppEntry.onWork() = isWork || key in workKeys
+    val showTabs = query.isBlank()
+    val hasProfile = work != null
     val paused = work?.paused == true
-    val tabApps = remember(apps, showTabs, workTab) {
-        if (!showTabs) apps else apps.filter { it.isWork == workTab }
+    val tabApps = remember(apps, showTabs, workTab, workKeys) {
+        if (!showTabs) apps else apps.filter { it.onWork() == workTab }
     }
     val filtered = remember(tabApps, query) { searchApps(tabApps, query) }
 
     // Most-opened apps on top.
     val byKey = remember(apps) { apps.associateBy { it.key } }
-    val suggested = remember(byKey, usage, showTabs, workTab, settings.suggestions) {
+    val suggested = remember(byKey, usage, showTabs, workTab, settings.suggestions, workKeys) {
         if (!settings.suggestions) emptyList()
         else usage.entries.sortedByDescending { it.value }
             .mapNotNull { byKey[it.key] }
-            .filter { !it.isPaused && (!showTabs || it.isWork == workTab) }
+            .filter { !it.isPaused && (!showTabs || it.onWork() == workTab) }
             .take(5)
     }
     val showSuggestions = query.isBlank() && suggested.isNotEmpty()
@@ -1075,6 +1084,31 @@ private fun AppDrawer(
         if (showTabs) {
             ProfileTabs(workTab = workTab, onSelect = { workTab = it })
             if (workTab && paused) PausedBanner(onTurnOn = { vm.setWorkPaused(false) })
+            if (workTab) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (filtered.isEmpty()) "No apps on Work yet" else "${filtered.size} work apps",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Row(
+                        Modifier
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.10f))
+                            .clickable { choosingWorkApps = true }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.Edit, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Choose apps", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -1112,9 +1146,19 @@ private fun AppDrawer(
                 items(filtered, key = { it.key }) { app ->
                     DrawerAppIcon(app, vm, drag, dockKeys, onLaunch, close, onDrop)
                 }
+                if (showTabs && workTab && filtered.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "work-empty") {
+                        Text(
+                            "Tap Choose apps, or long-press any app and pick Add to Work tab.",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 24.dp),
+                        )
+                    }
+                }
             }
 
-            if (showTabs && workTab && !paused) {
+            if (showTabs && workTab && hasProfile && !paused) {
                 Row(
                     Modifier
                         .align(Alignment.BottomEnd)
@@ -1141,6 +1185,95 @@ private fun AppDrawer(
             }
         }
     }
+
+    if (choosingWorkApps) {
+        BackHandler { choosingWorkApps = false }
+        WorkAppsPicker(
+            apps = apps.filter { !it.isWork },
+            selected = workKeys,
+            onToggle = { app, on -> vm.setWorkApp(app.key, on) },
+            onDone = { choosingWorkApps = false },
+        )
+    }
+}
+
+/** Checklist of your apps: tick the ones that belong on the Work tab. */
+@Composable
+private fun WorkAppsPicker(
+    apps: List<AppEntry>,
+    selected: Set<String>,
+    onToggle: (AppEntry, Boolean) -> Unit,
+    onDone: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val shown = remember(apps, query) { searchApps(apps, query) }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .swallowTouches()
+            .background(Color(0xFA0D1016))
+            .statusBarsPadding()
+            .imePadding(),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Work tab apps", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                Text("${selected.count { k -> apps.any { it.key == k } }} selected", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+            }
+            Text(
+                "Done",
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .clickable(onClick = onDone)
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+            )
+        }
+        TextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text("Search apps") },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            singleLine = true,
+            shape = CircleShape,
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.White.copy(alpha = 0.10f),
+                unfocusedContainerColor = Color.White.copy(alpha = 0.10f),
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+            ),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        LazyColumn(
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 32.dp),
+            modifier = Modifier.weight(1f).navigationBarsPadding(),
+        ) {
+            items(shown, key = { "work-pick-" + it.key }) { app ->
+                val on = app.key in selected
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onToggle(app, !on) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppImage(app, 40.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Text(app.label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Checkbox(checked = on, onCheckedChange = { onToggle(app, it) })
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1155,6 +1288,7 @@ private fun DrawerAppIcon(
 ) {
     val context = LocalContext.current
     val inDock = app.key in dockKeys
+    val onWorkTab = app.isWork || app.key in LocalSettings.current.workApps
     LauncherIcon(
         label = app.label,
         drag = drag,
@@ -1166,6 +1300,9 @@ private fun DrawerAppIcon(
                 if (inDock) "Remove from dock" else "Add to dock",
                 enabled = inDock || dockKeys.size < MAX_DOCK,
             ) { vm.toggleDock(app.key) },
+            MenuAction(if (onWorkTab) "Remove from Work tab" else "Add to Work tab", enabled = !app.isWork) {
+                vm.setWorkApp(app.key, !onWorkTab)
+            },
             MenuAction("App info") { vm.openAppInfo(app) },
             MenuAction("Uninstall") {
                 context.startSafely(Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}")))

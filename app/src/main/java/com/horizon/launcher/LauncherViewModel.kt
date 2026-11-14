@@ -211,6 +211,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshMeetings() { meetingRefresh.value++ }
 
+    /** Put an app on the Work tab, or take it off. Work-profile apps are always on Work. */
+    fun setWorkApp(key: String, onWork: Boolean) =
+        updateSettings { it.copy(workApps = if (onWork) it.workApps + key else it.workApps - key) }
+
     // ---------- Apps ----------
 
     fun refresh() {

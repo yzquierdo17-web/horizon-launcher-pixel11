@@ -167,6 +167,8 @@ data class LauncherSettings(
     /** Set once the user has answered or dismissed the "show your meetings" prompt. */
     val meetingPromptDone: Boolean = false,
     val suggestions: Boolean = true,
+    /** Apps you've put on the Work tab yourself (app keys), on top of any work-profile apps. */
+    val workApps: Set<String> = emptySet(),
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -191,12 +193,14 @@ data class LauncherSettings(
         .put("meetings", showMeetings)
         .put("meetingPrompt", meetingPromptDone)
         .put("suggestions", suggestions)
+        .put("workApps", JSONArray(workApps.toList()))
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
             if (o == null) return LauncherSettings()
             val h = o.optJSONArray("hidden") ?: JSONArray()
             val d = o.optJSONArray("workDays")
+            val wa = o.optJSONArray("workApps") ?: JSONArray()
             return LauncherSettings(
                 themedIcons = o.optBoolean("themed", false),
                 iconScale = o.optDouble("scale", 1.0).toFloat(),
@@ -213,6 +217,7 @@ data class LauncherSettings(
                 showMeetings = o.optBoolean("meetings", true),
                 meetingPromptDone = o.optBoolean("meetingPrompt", false),
                 suggestions = o.optBoolean("suggestions", true),
+                workApps = (0 until wa.length()).map { wa.getString(it) }.toSet(),
             )
         }
     }
