@@ -32,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
@@ -126,8 +127,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private val meetingRefresh = MutableStateFlow(0)
     val meeting: StateFlow<Meeting?> =
         combine(now, calendar.changes(), meetingRefresh, settings.map { it.showMeetings }.distinctUntilChanged()) { _, _, _, show ->
-            if (show) calendar.nextMeeting() else null
-        }.flowOn(Dispatchers.IO).stateIn(viewModelScope, SharingStarted.Eagerly, null)
+            if (show) runCatching { calendar.nextMeeting() }.getOrNull() else null
+        }.flowOn(Dispatchers.IO)
+            .catch { emit(null) } // a calendar problem must never take the launcher down
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _usage = MutableStateFlow(decodeUsage(prefs.getString(KEY_USAGE, null)))
     /** Launch counts per app, used for the suggestions row in the drawer. Stays on the phone. */

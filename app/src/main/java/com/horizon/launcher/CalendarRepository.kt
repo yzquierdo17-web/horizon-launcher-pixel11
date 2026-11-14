@@ -41,9 +41,13 @@ class CalendarRepository(private val context: Context) {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) { trySend(Unit) }
         }
-        context.contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
         trySend(Unit)
-        awaitClose { context.contentResolver.unregisterContentObserver(observer) }
+        // Android 8+ throws if we watch the calendar before calendar access is granted,
+        // so only register once we have it (the 30-second tick covers the rest).
+        val registered = hasPermission() && runCatching {
+            context.contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        }.isSuccess
+        awaitClose { if (registered) runCatching { context.contentResolver.unregisterContentObserver(observer) } }
     }
 
     /**
