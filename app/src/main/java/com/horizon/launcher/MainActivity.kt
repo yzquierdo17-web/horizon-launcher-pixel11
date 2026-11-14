@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        vm.refresh()
+        vm.onResume() // refreshes apps, applies work hours, refreshes the meeting line
     }
 
     // Pressing Home while Horizon is showing closes overlays, then goes to the first page.

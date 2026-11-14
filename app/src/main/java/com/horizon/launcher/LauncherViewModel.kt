@@ -5,7 +5,10 @@ import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.LauncherApps
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -21,17 +24,27 @@ import android.os.UserManager
 import android.widget.Toast
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDateTime
 import kotlin.math.ceil
 
 data class AppEntry(
@@ -40,6 +53,9 @@ data class AppEntry(
     val user: UserHandle,
     val serial: Long,
     val icon: ImageBitmap,
+    val isWork: Boolean = false,
+    /** Work profile is paused: shown greyed out; tapping offers to turn work apps on. */
+    val isPaused: Boolean = false,
 ) {
     val packageName: String get() = component.packageName
     val key: String get() = component.flattenToString() + "#" + serial
@@ -90,6 +106,41 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private val _homeSignal = MutableStateFlow(0)
     val homeSignal: StateFlow<Int> = _homeSignal.asStateFlow()
 
+    // ---------- Work profile, work hours, meetings, suggestions ----------
+
+    private val _workProfile = MutableStateFlow<WorkProfile?>(null)
+    val workProfile: StateFlow<WorkProfile?> = _workProfile.asStateFlow()
+
+    /** Ticks every 30 s so work hours and the meeting line stay current. */
+    private val now = flow {
+        while (true) {
+            emit(LocalDateTime.now())
+            delay(30_000)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, LocalDateTime.now())
+
+    val workTime: StateFlow<Boolean> = combine(settings, now) { s, t -> s.isWorkTime(t) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val calendar = CalendarRepository(app)
+    private val meetingRefresh = MutableStateFlow(0)
+    val meeting: StateFlow<Meeting?> =
+        combine(now, calendar.changes(), meetingRefresh, settings.map { it.showMeetings }.distinctUntilChanged()) { _, _, _, show ->
+            if (show) calendar.nextMeeting() else null
+        }.flowOn(Dispatchers.IO).stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val _usage = MutableStateFlow(decodeUsage(prefs.getString(KEY_USAGE, null)))
+    /** Launch counts per app, used for the suggestions row in the drawer. Stays on the phone. */
+    val usage: StateFlow<Map<String, Int>> = _usage.asStateFlow()
+
+    /** Work profile turned on/off, added or removed. */
+    private val profileReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: Intent) = refresh()
+    }
+
+    /** Last work-hours state we acted on; null until first seen (we don't act on launch). */
+    private var lastWorkTime: Boolean? = null
+
     /** Measured by the home grid; used to size new widgets. */
     var cellWidthDp = 80f
     var cellHeightDp = 110f
@@ -97,13 +148,77 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        ContextCompat.registerReceiver(
+            app,
+            profileReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE)
+                addAction(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE)
+                addAction(Intent.ACTION_MANAGED_PROFILE_ADDED)
+                addAction(Intent.ACTION_MANAGED_PROFILE_REMOVED)
+                addAction(Intent.ACTION_MANAGED_PROFILE_UNLOCKED)
+            },
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+        // Auto pause / resume work apps at the edges of work hours.
+        viewModelScope.launch {
+            workTime.collect { applyWorkHours(it) }
+        }
     }
+
+    override fun onCleared() {
+        runCatching { getApplication<Application>().unregisterReceiver(profileReceiver) }
+    }
+
+    private fun applyWorkHours(isWork: Boolean) {
+        val previous = lastWorkTime
+        lastWorkTime = isWork
+        if (previous == null || previous == isWork) return
+        val s = _settings.value
+        if (!s.workHours || !s.pauseWorkAfterHours || _workProfile.value == null) return
+        if (!setWorkPaused(paused = !isWork, quiet = true)) lastWorkTime = previous // retry on next resume
+    }
+
+    /** Home came to the front: the moment Android lets a launcher pause or resume work apps. */
+    fun onResume() {
+        refresh()
+        val prev = lastWorkTime
+        val cur = workTime.value
+        if (prev != null && prev != cur) {
+            lastWorkTime = !cur
+            applyWorkHours(cur)
+        }
+        meetingRefresh.value++
+    }
+
+    /**
+     * Pause or resume all work apps. Android only allows this for the default Home app.
+     * Returns false if the system refused.
+     */
+    fun setWorkPaused(paused: Boolean, quiet: Boolean = false): Boolean {
+        val work = _workProfile.value ?: return false
+        val ok = runCatching { userManager.requestQuietModeEnabled(paused, work.user) }
+            .getOrElse {
+                if (!quiet) toast("Make Horizon your default home app to pause work apps")
+                false
+            }
+        refresh()
+        return ok
+    }
+
+    fun refreshMeetings() { meetingRefresh.value++ }
 
     // ---------- Apps ----------
 
     fun refresh() {
         viewModelScope.launch {
             val list = withContext(Dispatchers.IO) { runCatching { loadApps() }.getOrNull() } ?: return@launch
+            _workProfile.value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val me = Process.myUserHandle()
+                    userManager.userProfiles.firstOrNull { it != me }?.let { WorkProfile(it, userManager.isQuietModeEnabled(it)) }
+                }.getOrNull()
+            }
             _apps.value = list
             _appIndex.value = list.associateBy { it.key }
             if (list.isNotEmpty()) {
@@ -118,6 +233,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val px = (72 * ctx.resources.displayMetrics.density).toInt()
         val themed = _settings.value.themedIcons
         val me = Process.myUserHandle()
+        val quiet = userManager.userProfiles.filter { it != me && userManager.isQuietModeEnabled(it) }.toSet()
         return userManager.userProfiles
             .flatMap { user -> launcherApps.getActivityList(null, user) }
             .filter { it.componentName.packageName != ctx.packageName }
@@ -133,6 +249,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                     user = info.user,
                     serial = userManager.getSerialNumberForUser(info.user),
                     icon = (themedIcon ?: info.getBadgedIcon(0).toBitmap(px, px)).asImageBitmap(),
+                    isWork = info.user != me,
+                    isPaused = info.user in quiet,
                 )
             }
             .sortedBy { it.label.lowercase() }
@@ -193,9 +311,33 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun launch(app: AppEntry, sourceBounds: Rect? = null, options: android.os.Bundle? = null) {
+        if (app.isPaused) {
+            // Same as Pixel: tapping a paused work app offers to turn work apps back on.
+            setWorkPaused(false)
+            return
+        }
+        recordLaunch(app.key)
         runCatching { launcherApps.startMainActivity(app.component, app.user, sourceBounds, options) }
             .onFailure { runCatching { launcherApps.startMainActivity(app.component, app.user, null, null) } }
     }
+
+    private fun recordLaunch(key: String) {
+        val counts = _usage.value.toMutableMap()
+        counts[key] = (counts[key] ?: 0) + 1
+        val trimmed = counts.entries.sortedByDescending { it.value }.take(200).associate { it.key to it.value }
+        _usage.value = trimmed
+        prefs.edit().putString(KEY_USAGE, JSONObject(trimmed as Map<*, *>).toString()).apply()
+    }
+
+    fun clearSuggestions() {
+        _usage.value = emptyMap()
+        prefs.edit().remove(KEY_USAGE).apply()
+    }
+
+    private fun decodeUsage(json: String?): Map<String, Int> = runCatching {
+        val o = JSONObject(json ?: return emptyMap())
+        o.keys().asSequence().associateWith { o.getInt(it) }
+    }.getOrDefault(emptyMap())
 
     // ---------- Settings ----------
 
@@ -488,6 +630,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         private const val KEY_ITEMS = "home_items"
         private const val KEY_DOCK = "dock_keys"
         private const val KEY_SETTINGS = "settings"
+        private const val KEY_USAGE = "usage"
         private val DEFAULT_DOCK = listOf(
             "com.google.android.dialer",
             "com.google.android.apps.messaging",

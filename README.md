@@ -16,6 +16,14 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 - Colors follow your wallpaper (Material You)
 - Pull down at the top of the drawer, or press Back, to close it
 
+### For work
+- **Work and Personal tabs** in the drawer when your phone has a work profile, with a **Pause work apps** button that turns off all work apps and their notifications. Paused apps show in grey; tap one to turn work apps back on.
+- **Work hours** (Settings → Work): choose start and end times and days. During work hours the drawer opens on Work and the clock shows "Work hours · until 6:00 PM". Optionally pause work apps after hours and turn them back on in the morning. Android only allows this while Horizon is on screen, so if the phone is locked at closing time it happens the next time you go Home.
+- **Next meeting under the clock** from any calendar on the phone (Google, Outlook and others). It skips all-day events and declined invites. A **Join** button appears 15 minutes before the start when the event has a Meet, Zoom, Teams, Webex, Whereby, GoTo or Chime link. Tap the meeting itself to open it in Calendar. Horizon asks for calendar access once.
+- **Suggested apps:** your five most-opened apps at the top of the drawer. Counts stay on the phone and can be turned off.
+- **Smarter search:** matches the start of any word, initials ("gm" finds Google Maps) and ignores accents.
+- **A–Z scroller** on the drawer's edge, with a letter bubble and a haptic tick.
+
 ## Getting the app
 Every push to `main` builds an APK automatically:
 1. Open the **Actions** tab and tap the latest **Build Horizon APK** run.

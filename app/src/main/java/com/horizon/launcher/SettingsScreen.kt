@@ -1,6 +1,14 @@
 package com.horizon.launcher
 
+import android.Manifest
+import android.app.TimePickerDialog
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -50,7 +58,15 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val s by vm.settings.collectAsState()
+    val work by vm.workProfile.collectAsState()
     val accent = MaterialTheme.colorScheme.primary
+    val is24h = android.text.format.DateFormat.is24HourFormat(context)
+    var calendarGranted by remember { mutableStateOf(vm.calendar.hasPermission()) }
+    val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        calendarGranted = granted
+        vm.updateSettings { it.copy(showMeetings = granted, meetingPromptDone = true) }
+        vm.refreshMeetings()
+    }
 
     Column(
         Modifier
@@ -114,6 +130,86 @@ fun SettingsScreen(
                 }
             }
 
+            item { Section("Work") }
+            item {
+                ToggleRow(
+                    "Work hours",
+                    "During these hours the drawer opens on Work and the clock shows when your day ends",
+                    s.workHours,
+                ) { v -> vm.updateSettings { it.copy(workHours = v) } }
+            }
+            if (s.workHours) {
+                item {
+                    ActionRow("Starts", formatMinute(s.workStart, is24h)) {
+                        TimePickerDialog(context, { _, h, m -> vm.updateSettings { it.copy(workStart = h * 60 + m) } },
+                            s.workStart / 60, s.workStart % 60, is24h).show()
+                    }
+                }
+                item {
+                    ActionRow("Ends", formatMinute(s.workEnd, is24h)) {
+                        TimePickerDialog(context, { _, h, m -> vm.updateSettings { it.copy(workEnd = h * 60 + m) } },
+                            s.workEnd / 60, s.workEnd % 60, is24h).show()
+                    }
+                }
+                item {
+                    val names = listOf("M", "T", "W", "T", "F", "S", "S")
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        (1..7).forEach { day ->
+                            val on = day in s.workDays
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .clip(CircleShape)
+                                    .background(if (on) accent else Color.White.copy(alpha = 0.08f))
+                                    .clickable {
+                                        vm.updateSettings { st -> st.copy(workDays = if (on) st.workDays - day else st.workDays + day) }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(names[day - 1], color = if (on) MaterialTheme.colorScheme.onPrimary else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                }
+                if (work != null) item {
+                    ToggleRow(
+                        "Pause work apps after hours",
+                        "Turns work apps off when work hours end and back on when they start",
+                        s.pauseWorkAfterHours,
+                    ) { v -> vm.updateSettings { it.copy(pauseWorkAfterHours = v) } }
+                }
+            }
+            work?.let { w ->
+                item {
+                    ToggleRow(
+                        "Work apps",
+                        if (w.paused) "Paused. You won't get work notifications" else "On",
+                        !w.paused,
+                    ) { v -> vm.setWorkPaused(!v) }
+                }
+            }
+            item {
+                ToggleRow(
+                    "Next meeting on home screen",
+                    if (calendarGranted) "Shows your current or next meeting under the clock, with a Join button"
+                    else "Needs access to your calendar",
+                    s.showMeetings && calendarGranted,
+                ) { v ->
+                    if (v && !calendarGranted) calendarPermission.launch(Manifest.permission.READ_CALENDAR)
+                    else vm.updateSettings { it.copy(showMeetings = v, meetingPromptDone = true) }
+                }
+            }
+            item {
+                ToggleRow("Suggested apps", "Your most-opened apps at the top of the drawer. Counts stay on this phone", s.suggestions) { v ->
+                    vm.updateSettings { it.copy(suggestions = v) }
+                    if (!v) vm.clearSuggestions()
+                }
+            }
+
             item { Section("Your layout") }
             item { ActionRow("Back up layout", "Save your pages, folders, dock and settings to a file", onBackup) }
             item { ActionRow("Restore layout", "Load a backup file", onRestore) }
@@ -166,7 +262,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.3"
+    const val NAME = "0.4"
 }
 
 @Composable

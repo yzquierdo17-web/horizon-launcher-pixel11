@@ -14,7 +14,28 @@ import android.net.Uri
 import android.provider.AlarmClock
 import android.provider.Settings
 import android.text.format.DateFormat
+import android.Manifest
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material.icons.outlined.WorkOff
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import java.time.Instant
+import java.time.ZoneId
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -483,7 +504,7 @@ private fun HomeScreen(
                 .navigationBarsPadding(),
         ) {
             Spacer(Modifier.height(if (settings.compactClock) 20.dp else 32.dp))
-            ClockHeader(compact = settings.compactClock, modifier = Modifier.padding(horizontal = 24.dp))
+            ClockHeader(vm = vm, compact = settings.compactClock, modifier = Modifier.padding(horizontal = 24.dp))
             Spacer(Modifier.height(12.dp))
 
             HorizontalPager(
@@ -665,8 +686,19 @@ private fun PageDots(count: Int, current: Int) {
 }
 
 @Composable
-private fun ClockHeader(compact: Boolean, modifier: Modifier = Modifier) {
+private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val settings = LocalSettings.current
+    val meeting by vm.meeting.collectAsState()
+    val workTime by vm.workTime.collectAsState()
+    val work by vm.workProfile.collectAsState()
+    var calendarGranted by remember { mutableStateOf(vm.calendar.hasPermission()) }
+    val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        calendarGranted = granted
+        vm.updateSettings { it.copy(showMeetings = granted, meetingPromptDone = true) }
+        vm.refreshMeetings()
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { calendarGranted = vm.calendar.hasPermission() }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -721,6 +753,110 @@ private fun ClockHeader(compact: Boolean, modifier: Modifier = Modifier) {
                 color = Color.White.copy(alpha = 0.8f),
                 style = TextStyle(fontSize = 14.sp, shadow = ClockShadow),
                 modifier = Modifier.clickable(onClick = openClock),
+            )
+        }
+
+        // Next meeting, then work status.
+        val m = meeting
+        if (m != null && settings.showMeetings) {
+            Spacer(Modifier.height(8.dp))
+            MeetingLine(m, now, onOpen = { vm.calendar.openEvent(m) }, onJoin = { vm.calendar.join(m) })
+        } else if (settings.showMeetings && !calendarGranted && !settings.meetingPromptDone) {
+            Spacer(Modifier.height(8.dp))
+            GlanceChip(
+                "Show your next meeting",
+                Icons.Outlined.Event,
+                onClick = { calendarPermission.launch(Manifest.permission.READ_CALENDAR) },
+                onDismiss = { vm.updateSettings { it.copy(meetingPromptDone = true) } },
+            )
+        }
+        val w = work
+        if (w != null && w.paused) {
+            Spacer(Modifier.height(8.dp))
+            GlanceChip("Work apps paused \u00B7 Turn on", Icons.Outlined.WorkOff, onClick = { vm.setWorkPaused(false) })
+        } else if (workTime) {
+            Spacer(Modifier.height(8.dp))
+            GlanceChip(
+                "Work hours \u00B7 until ${formatMinute(settings.workEnd, DateFormat.is24HourFormat(context))}",
+                Icons.Outlined.Work,
+            )
+        }
+    }
+}
+
+/** [now] is passed so the "in N min" text recomposes every minute with the clock. */
+@Suppress("UNUSED_PARAMETER")
+@Composable
+private fun MeetingLine(meeting: Meeting, now: LocalDateTime, onOpen: () -> Unit, onJoin: () -> Unit) {
+    val context = LocalContext.current
+    val zone = ZoneId.systemDefault()
+    val clock = DateTimeFormatter.ofPattern(if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a")
+    fun fmt(ms: Long) = Instant.ofEpochMilli(ms).atZone(zone).format(clock)
+    val minutes = ((meeting.begin - System.currentTimeMillis()) / 60_000L).toInt()
+    val whenText = when {
+        meeting.begin <= System.currentTimeMillis() -> "now \u00B7 until ${fmt(meeting.end)}"
+        minutes < 1 -> "starting now"
+        minutes < 60 -> "in $minutes min"
+        else -> "at ${fmt(meeting.begin)}"
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f, fill = false).clickable(onClick = onOpen),
+        ) {
+            Box(
+                Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(meeting.color?.let { Color(it) } ?: Color(0xFF8AB4F8)),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "${meeting.title} \u00B7 $whenText",
+                color = Color.White,
+                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        // Join shows from 15 minutes before until the meeting ends, when the event has a link.
+        if (meeting.joinUrl != null && minutes <= 15) {
+            Spacer(Modifier.width(10.dp))
+            Row(
+                Modifier
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .clickable(onClick = onJoin)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.Videocam, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Join", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlanceChip(text: String, icon: ImageVector, onClick: (() -> Unit)? = null, onDismiss: (() -> Unit)? = null) {
+    Row(
+        Modifier
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.28f))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(start = 12.dp, end = if (onDismiss != null) 4.dp else 12.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        if (onDismiss != null) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = "Not now",
+                tint = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.padding(start = 6.dp).size(18.dp).clip(CircleShape).clickable(onClick = onDismiss),
             )
         }
     }
@@ -802,13 +938,40 @@ private fun AppDrawer(
     blurOn: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    val settings = LocalSettings.current
     val dockKeys by vm.dock.collectAsState()
+    val work by vm.workProfile.collectAsState()
+    val workTime by vm.workTime.collectAsState()
+    val usage by vm.usage.collectAsState()
     var query by remember { mutableStateOf("") }
-    val filtered = remember(apps, query) {
-        val q = query.trim()
-        if (q.isEmpty()) apps else apps.filter { it.label.contains(q, ignoreCase = true) }
+
+    // Work and Personal tabs when the phone has a work profile. Opens on Work during work hours.
+    var workTab by remember(workTime) { mutableStateOf(workTime) }
+    val showTabs = work != null && query.isBlank()
+    val paused = work?.paused == true
+    val tabApps = remember(apps, showTabs, workTab) {
+        if (!showTabs) apps else apps.filter { it.isWork == workTab }
     }
+    val filtered = remember(tabApps, query) { searchApps(tabApps, query) }
+
+    // Most-opened apps on top.
+    val byKey = remember(apps) { apps.associateBy { it.key } }
+    val suggested = remember(byKey, usage, showTabs, workTab, settings.suggestions) {
+        if (!settings.suggestions) emptyList()
+        else usage.entries.sortedByDescending { it.value }
+            .mapNotNull { byKey[it.key] }
+            .filter { !it.isPaused && (!showTabs || it.isWork == workTab) }
+            .take(5)
+    }
+    val showSuggestions = query.isBlank() && suggested.isNotEmpty()
+    val headerCount = if (showSuggestions) 2 else 0
+    val letterIndex = remember(filtered, query, headerCount) {
+        if (query.isNotBlank()) emptyMap()
+        else buildMap { filtered.forEachIndexed { i, app -> putIfAbsent(app.sectionLetter(), i + headerCount) } }
+    }
+
+    val grid = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val close by rememberUpdatedState {
@@ -822,6 +985,8 @@ private fun AppDrawer(
             runCatching { focus.requestFocus() }
         }
     }
+    LaunchedEffect(query) { if (grid.firstVisibleItemIndex > 0) grid.scrollToItem(0) }
+    LaunchedEffect(grid.isScrollInProgress) { if (grid.isScrollInProgress) keyboard?.hide() }
 
     // Pulling down when the list is already at the top closes the drawer.
     val pullToClose = remember {
@@ -878,6 +1043,15 @@ private fun AppDrawer(
             onValueChange = { query = it },
             placeholder = { Text("Search apps") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Clear search",
+                        modifier = Modifier.clip(CircleShape).clickable { query = "" }.padding(8.dp),
+                    )
+                }
+            },
             singleLine = true,
             shape = CircleShape,
             colors = TextFieldDefaults.colors(
@@ -898,40 +1072,277 @@ private fun AppDrawer(
 
         Spacer(Modifier.height(12.dp))
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(5),
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 32.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(pullToClose)
-                .navigationBarsPadding(),
-        ) {
-            items(filtered, key = { it.key }) { app ->
-                val inDock = app.key in dockKeys
-                LauncherIcon(
-                    label = app.label,
-                    drag = drag,
-                    payload = DragPayload.FromDrawer(app.key),
-                    onTap = { onLaunch(app) },
-                    menu = listOf(
-                        MenuAction("Add to home screen") { vm.addToHome(app) },
-                        MenuAction(
-                            if (inDock) "Remove from dock" else "Add to dock",
-                            enabled = inDock || dockKeys.size < MAX_DOCK,
-                        ) { vm.toggleDock(app.key) },
-                        MenuAction("App info") { vm.openAppInfo(app) },
-                        MenuAction("Uninstall") {
-                            context.startSafely(Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}")))
-                        },
-                    ),
-                    onDragStarted = close,
-                    onDrop = onDrop,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { AppImage(app) }
+        if (showTabs) {
+            ProfileTabs(workTab = workTab, onSelect = { workTab = it })
+            if (workTab && paused) PausedBanner(onTurnOn = { vm.setWorkPaused(false) })
+        }
+
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            val showScroller = letterIndex.size > 5
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(5),
+                state = grid,
+                contentPadding = PaddingValues(start = 12.dp, end = if (showScroller) 30.dp else 12.dp, bottom = 32.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(pullToClose)
+                    .navigationBarsPadding(),
+            ) {
+                if (showSuggestions) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "suggested") {
+                        Row(Modifier.fillMaxWidth()) {
+                            suggested.forEach { app ->
+                                Box(Modifier.weight(1f)) {
+                                    DrawerAppIcon(app, vm, drag, dockKeys, onLaunch, close, onDrop)
+                                }
+                            }
+                            repeat(5 - suggested.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "divider") {
+                        Box(
+                            Modifier
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(Color.White.copy(alpha = 0.12f)),
+                        )
+                    }
+                }
+                items(filtered, key = { it.key }) { app ->
+                    DrawerAppIcon(app, vm, drag, dockKeys, onLaunch, close, onDrop)
+                }
+            }
+
+            if (showTabs && workTab && !paused) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(end = 36.dp, bottom = 16.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .clickable { vm.setWorkPaused(true) }
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Outlined.WorkOff, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Pause work apps", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            if (showScroller) {
+                FastScroller(
+                    letters = letterIndex.keys.toList(),
+                    onSelect = { letter -> letterIndex[letter]?.let { scope.launch { grid.scrollToItem(it) } } },
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp),
+                )
             }
         }
     }
 }
+
+@Composable
+private fun DrawerAppIcon(
+    app: AppEntry,
+    vm: LauncherViewModel,
+    drag: DragController,
+    dockKeys: List<String>,
+    onLaunch: (AppEntry) -> Unit,
+    close: () -> Unit,
+    onDrop: () -> Unit,
+) {
+    val context = LocalContext.current
+    val inDock = app.key in dockKeys
+    LauncherIcon(
+        label = app.label,
+        drag = drag,
+        payload = DragPayload.FromDrawer(app.key),
+        onTap = { onLaunch(app) },
+        menu = listOf(
+            MenuAction("Add to home screen") { vm.addToHome(app) },
+            MenuAction(
+                if (inDock) "Remove from dock" else "Add to dock",
+                enabled = inDock || dockKeys.size < MAX_DOCK,
+            ) { vm.toggleDock(app.key) },
+            MenuAction("App info") { vm.openAppInfo(app) },
+            MenuAction("Uninstall") {
+                context.startSafely(Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}")))
+            },
+        ),
+        onDragStarted = close,
+        onDrop = onDrop,
+        modifier = Modifier.fillMaxWidth(),
+    ) { AppImage(app) }
+}
+
+@Composable
+private fun ProfileTabs(workTab: Boolean, onSelect: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 10.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(4.dp),
+    ) {
+        TabPill("Personal", Icons.Outlined.Person, selected = !workTab, Modifier.weight(1f)) { onSelect(false) }
+        TabPill("Work", Icons.Outlined.Work, selected = workTab, Modifier.weight(1f)) { onSelect(true) }
+    }
+}
+
+@Composable
+private fun TabPill(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else Color.White.copy(alpha = 0.75f)
+    Row(
+        modifier
+            .height(40.dp)
+            .clip(CircleShape)
+            .background(bg)
+            .clickable(onClick = onClick),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = fg, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun PausedBanner(onTurnOn: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.WorkOff, null, tint = Color.White.copy(alpha = 0.8f))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Work apps are paused", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text("You won't get work notifications", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+        }
+        Text(
+            "Turn on",
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .clickable(onClick = onTurnOn)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+    }
+}
+
+/** A–Z rail: touch or slide to jump, with a letter bubble and a haptic tick per letter. */
+@Composable
+private fun FastScroller(letters: List<String>, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
+    val view = LocalView.current
+    var active by remember { mutableStateOf<String?>(null) }
+    var heightPx by remember { mutableIntStateOf(1) }
+    val currentLetters by rememberUpdatedState(letters)
+    val currentOnSelect by rememberUpdatedState(onSelect)
+
+    fun pick(y: Float) {
+        val list = currentLetters
+        if (list.isEmpty()) return
+        val letter = list[((y / heightPx) * list.size).toInt().coerceIn(0, list.lastIndex)]
+        if (letter != active) {
+            active = letter
+            view.tick()
+            currentOnSelect(letter)
+        }
+    }
+
+    Box(modifier) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .width(24.dp)
+                .clip(CircleShape)
+                .background(if (active != null) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+                .padding(vertical = 6.dp)
+                .onSizeChanged { heightPx = it.height.coerceAtLeast(1) }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        down.consume()
+                        pick(down.position.y)
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            change.consume()
+                            pick(change.position.y)
+                        }
+                        active = null
+                    }
+                },
+        ) {
+            letters.forEach { letter ->
+                Text(
+                    letter,
+                    color = if (letter == active) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(vertical = 1.dp),
+                )
+            }
+        }
+        active?.let { letter ->
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = (-72).dp)
+                    .size(60.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+            ) {
+                Text(letter, color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 28.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+private fun AppEntry.sectionLetter(): String {
+    val c = label.trim().firstOrNull()?.uppercaseChar() ?: return "#"
+    return if (c.isLetter()) c.toString() else "#"
+}
+
+/**
+ * Ranked search: name starts with it > a word starts with it > initials ("gm" → Google Maps) > anywhere.
+ * Accents are ignored ("cafe" finds "Café"). Alphabetical order is kept within each rank.
+ */
+internal fun searchApps(apps: List<AppEntry>, query: String): List<AppEntry> {
+    val q = query.trim().normalizeForSearch()
+    if (q.isEmpty()) return apps
+    return apps.mapNotNull { app ->
+        val label = app.label.normalizeForSearch()
+        val words = label.split(' ', '-', '_', '.', ':').filter { it.isNotEmpty() }
+        val rank = when {
+            label.startsWith(q) -> 0
+            words.any { it.startsWith(q) } -> 1
+            q.length >= 2 && words.joinToString("") { it.take(1) }.startsWith(q) -> 2
+            label.contains(q) -> 3
+            else -> return@mapNotNull null
+        }
+        rank to app
+    }.sortedBy { it.first }.map { it.second }
+}
+
+private fun String.normalizeForSearch(): String =
+    java.text.Normalizer.normalize(this, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .lowercase()
 
 fun Context.startSafely(intent: Intent) {
     runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }

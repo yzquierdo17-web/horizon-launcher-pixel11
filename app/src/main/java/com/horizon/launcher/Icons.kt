@@ -154,7 +154,18 @@ fun ItemMenu(expanded: Boolean, onDismiss: () -> Unit, actions: List<MenuAction>
 
 @Composable
 fun AppImage(app: AppEntry, size: Dp = scaledIconSize()) {
-    Image(bitmap = app.icon, contentDescription = app.label, modifier = Modifier.size(size))
+    // Paused work apps: greyscale and faded, like Pixel.
+    val filter = remember(app.isPaused) {
+        if (app.isPaused) androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+            androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) },
+        ) else null
+    }
+    Image(
+        bitmap = app.icon,
+        contentDescription = app.label,
+        colorFilter = filter,
+        modifier = Modifier.size(size).then(if (app.isPaused) Modifier.alpha(0.5f) else Modifier),
+    )
 }
 
 /** 2x2 preview of the first four apps in a folder. */

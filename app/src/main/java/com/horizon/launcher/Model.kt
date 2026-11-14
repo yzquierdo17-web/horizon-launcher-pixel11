@@ -156,7 +156,25 @@ data class LauncherSettings(
     val showSearch: Boolean = true,
     val wallpaperBlur: Boolean = true,
     val hidden: Set<String> = emptySet(),
+    // Work hours. Minutes since midnight; days are ISO numbers (1 = Monday … 7 = Sunday).
+    val workHours: Boolean = false,
+    val workStart: Int = 9 * 60,
+    val workEnd: Int = 18 * 60,
+    val workDays: Set<Int> = setOf(1, 2, 3, 4, 5),
+    /** Pause the work profile outside work hours and turn it back on when they start. */
+    val pauseWorkAfterHours: Boolean = false,
+    val showMeetings: Boolean = true,
+    /** Set once the user has answered or dismissed the "show your meetings" prompt. */
+    val meetingPromptDone: Boolean = false,
+    val suggestions: Boolean = true,
 ) {
+    fun isWorkTime(now: java.time.LocalDateTime): Boolean {
+        if (!workHours || now.dayOfWeek.value !in workDays) return false
+        val m = now.hour * 60 + now.minute
+        return if (workStart <= workEnd) m in workStart until workEnd
+        else m >= workStart || m < workEnd // overnight shifts
+    }
+
     fun toJson(): JSONObject = JSONObject()
         .put("themed", themedIcons)
         .put("scale", iconScale.toDouble())
@@ -165,11 +183,20 @@ data class LauncherSettings(
         .put("search", showSearch)
         .put("blur", wallpaperBlur)
         .put("hidden", JSONArray(hidden.toList()))
+        .put("workHours", workHours)
+        .put("workStart", workStart)
+        .put("workEnd", workEnd)
+        .put("workDays", JSONArray(workDays.toList()))
+        .put("workPause", pauseWorkAfterHours)
+        .put("meetings", showMeetings)
+        .put("meetingPrompt", meetingPromptDone)
+        .put("suggestions", suggestions)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
             if (o == null) return LauncherSettings()
             val h = o.optJSONArray("hidden") ?: JSONArray()
+            val d = o.optJSONArray("workDays")
             return LauncherSettings(
                 themedIcons = o.optBoolean("themed", false),
                 iconScale = o.optDouble("scale", 1.0).toFloat(),
@@ -178,7 +205,25 @@ data class LauncherSettings(
                 showSearch = o.optBoolean("search", true),
                 wallpaperBlur = o.optBoolean("blur", true),
                 hidden = (0 until h.length()).map { h.getString(it) }.toSet(),
+                workHours = o.optBoolean("workHours", false),
+                workStart = o.optInt("workStart", 9 * 60),
+                workEnd = o.optInt("workEnd", 18 * 60),
+                workDays = d?.let { arr -> (0 until arr.length()).map { arr.getInt(it) }.toSet() } ?: setOf(1, 2, 3, 4, 5),
+                pauseWorkAfterHours = o.optBoolean("workPause", false),
+                showMeetings = o.optBoolean("meetings", true),
+                meetingPromptDone = o.optBoolean("meetingPrompt", false),
+                suggestions = o.optBoolean("suggestions", true),
             )
         }
     }
+}
+
+/** The managed (work) profile, if this phone has one. */
+data class WorkProfile(val user: android.os.UserHandle, val paused: Boolean)
+
+fun formatMinute(minuteOfDay: Int, is24h: Boolean): String {
+    val h = minuteOfDay / 60
+    val m = minuteOfDay % 60
+    return if (is24h) "%02d:%02d".format(h, m)
+    else "%d:%02d %s".format(if (h % 12 == 0) 12 else h % 12, m, if (h < 12) "AM" else "PM")
 }
