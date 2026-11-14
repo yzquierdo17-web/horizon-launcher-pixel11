@@ -25,8 +25,12 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 - **A–Z scroller** on the drawer's edge, with a letter bubble and a haptic tick.
 
 ## Getting the app
-Every push to `main` builds an APK automatically:
-1. Open the **Actions** tab and tap the latest **Build Horizon APK** run.
-2. Under **Artifacts**, download **Horizon-APK** and unzip it.
-3. Open the `.apk` on your phone and allow the install.
-4. Press Home and choose **Horizon**, or go to Settings → Apps → Default apps → Home app.
+On your phone, open this link to download the newest version, then tap the file to install it:
+
+**https://github.com/yzquierdo17-web/horizon-launcher-pixel11/releases/latest/download/Horizon.apk**
+
+Every push to `main` builds a new APK and publishes it there automatically. The first time, Android will ask you to allow installs from your browser.
+
+Then press Home and choose **Horizon**, or go to Settings → Apps → Default apps → Home app.
+
+If Android says the app conflicts with an existing Horizon, uninstall the old one first. Each build is signed with a temporary key, and Android won't update an app signed with a different key.

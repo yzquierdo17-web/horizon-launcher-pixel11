@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # lets builds of main publish the APK as a Release
 
     steps:
       - name: Get the code
@@ -36,3 +38,19 @@ jobs:
           name: Horizon-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # Builds of main also go to Releases, so this link always installs the newest version:
+      # https://github.com/${{ github.repository }}/releases/latest/download/Horizon.apk
+      - name: Name the APK
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: cp app/build/outputs/apk/debug/*.apk Horizon.apk
+
+      - name: Publish to Releases
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Horizon build ${{ github.run_number }}
+          body: Newest build from main. On your phone, open Horizon.apk to install it.
+          files: Horizon.apk
+          make_latest: "true"
