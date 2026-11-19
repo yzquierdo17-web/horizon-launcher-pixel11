@@ -30,7 +30,12 @@ jobs:
           gradle-version: "8.11.1"
 
       - name: Build the APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug 2>&1 | tee build.log || {
+            grep -E "^e: |error:" build.log | head -25 | while read -r line; do echo "::error::$line"; done
+            exit 1
+          }
 
       - name: Upload the APK
         uses: actions/upload-artifact@v4
