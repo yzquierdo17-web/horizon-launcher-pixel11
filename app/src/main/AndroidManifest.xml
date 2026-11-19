@@ -41,5 +41,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- "Horizon Dial" live wallpaper: the rotating dial clock for the lock screen -->
+        <service
+            android:name=".DialWallpaperService"
+            android:exported="true"
+            android:label="@string/dial_wallpaper_name"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/dial_wallpaper" />
+        </service>
     </application>
 </manifest>

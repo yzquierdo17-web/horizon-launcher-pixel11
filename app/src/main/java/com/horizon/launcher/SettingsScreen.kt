@@ -130,6 +130,16 @@ fun SettingsScreen(
                 ) { v -> vm.updateSettings { it.copy(dialClock = v == "dial", compactClock = v == "compact") } }
             }
             item {
+                ActionRow("Dial on lock screen", "Set the Horizon Dial live wallpaper. Choose Lock screen when Android asks") {
+                    // Straight to the Horizon Dial preview; if this phone doesn't support that, the live wallpaper list.
+                    runCatching {
+                        context.startActivity(DialWallpaperService.previewIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }.onFailure {
+                        context.startSafely(Intent(android.app.WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER))
+                    }
+                }
+            }
+            item {
                 ToggleRow("Search bar", "Show the search bar under the dock", s.showSearch) { v ->
                     vm.updateSettings { it.copy(showSearch = v) }
                 }
@@ -272,7 +282,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.6"
+    const val NAME = "0.7"
 }
 
 @Composable

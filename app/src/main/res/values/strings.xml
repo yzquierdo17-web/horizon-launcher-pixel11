@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Horizon</string>
+    <string name="dial_wallpaper_name">Horizon Dial</string>
+    <string name="dial_wallpaper_desc">Rotating dial clock with smooth seconds, for your lock screen</string>
 </resources>

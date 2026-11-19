@@ -18,6 +18,7 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 
 ### Dial clock
 - **Settings → Look → Clock → Dial:** a watch-bezel clock. The big hour sits on the left, and a minute scale and a seconds scale turn smoothly so the current minute and second line up in a pill, with the date in small spaced capitals beside it. Tap the dial for Clock, or the date for Calendar. It redraws about 30 times a second and stops when Home isn't on screen.
+- **On your lock screen:** Settings → Look → **Dial on lock screen** opens the *Horizon Dial* live wallpaper. Tap **Set wallpaper** and choose **Lock screen**. It shows the same dial with smooth seconds on a dark charcoal background, plus your battery level, and only animates while the screen is on. Pixel's own lock-screen clock always stays on top; to make it less noticeable, pick a small clock style in Wallpaper & style → Lock screen.
 
 ### Add wheel and icons
 - **Add wheel:** long-press empty space on Home. Spin the dial with your finger (it coasts and snaps, with a tick per item), then tap the middle: add a widget, add an app, change icon style or wallpaper, or open settings. You can also tap an item to spin it to the top.
