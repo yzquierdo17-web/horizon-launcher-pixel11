@@ -76,6 +76,7 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
 
     override fun onCreate() {
         super.onCreate()
+        IslandDiagnostics.install(this)
         savedState.performRestore(null)
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
     }
@@ -85,8 +86,12 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         IslandPrefs.load(this)
         IslandHub._overlay.value = true
         wm = getSystemService(WindowManager::class.java)
-        geometry.value = measure()
-        addWindow()
+        try {
+            geometry.value = measure()
+            addWindow()
+        } catch (e: Throwable) {
+            IslandDiagnostics.record(this, e)
+        }
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         watchPlacement()
         androidx.core.content.ContextCompat.registerReceiver(
@@ -168,7 +173,7 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         }
         params = p
         root = frame
-        runCatching { manager.addView(frame, p) }
+        manager.addView(frame, p)
     }
 
     /** The island's own position: centre x and top y in screen px. */

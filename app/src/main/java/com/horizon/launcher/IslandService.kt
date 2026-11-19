@@ -135,6 +135,7 @@ class IslandListener : NotificationListenerService() {
     }
 
     override fun onListenerConnected() {
+        IslandDiagnostics.install(this)
         IslandHub._connected.value = true
         val manager = getSystemService(MediaSessionManager::class.java)
         sessions = manager

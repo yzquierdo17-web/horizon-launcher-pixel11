@@ -118,6 +118,7 @@ private data class Battery(val level: Int, val charging: Boolean)
 /** Sizes that depend on the camera and the chosen size, in dp. */
 private class Dims(
     val onCamera: Boolean,
+    val showIdle: Boolean,
     val holeW: Dp,
     val holeH: Dp,
     val pillH: Dp,
@@ -126,7 +127,11 @@ private class Dims(
     val bigW: Dp,
 ) {
     fun size(k: Kind): DpSize = when {
-        k == Kind.Idle -> if (onCamera) DpSize(holeW + 1.dp, holeH + 1.dp) else DpSize(0.dp, 0.dp)
+        k == Kind.Idle -> when {
+            showIdle -> DpSize(gap + 36.dp, pillH) // a small resting pill, like iPhone
+            onCamera -> DpSize(holeW + 1.dp, holeH + 1.dp)
+            else -> DpSize(0.dp, 0.dp)
+        }
         k.big -> DpSize(bigW, pillH + contentH(k) + 16.dp)
         else -> DpSize(wing * 2 + gap, pillH)
     }
@@ -189,6 +194,7 @@ private fun rememberDims(geometry: IslandGeometry, placement: IslandPlacement): 
             val pillH = if (hole != null) maxOf(holeH + pad * 2, 30.dp * s) else 34.dp * s
             Dims(
                 onCamera = hole != null,
+                showIdle = placement.showIdle,
                 holeW = holeW,
                 holeH = holeH,
                 pillH = pillH,
@@ -258,7 +264,7 @@ private fun LiveIsland(dims: Dims, compactOffset: Dp, outsideTaps: Int, onWindow
     // ---- Shape animation: width, height, horizontal position, corner ----
     val target = dims.size(kind)
     val targetX = if (kind.big) 0.dp else compactOffset
-    val idleTop = if (kind == Kind.Idle && dims.onCamera) (dims.pillH - target.height) / 2 else 0.dp
+    val idleTop = if (kind == Kind.Idle && dims.onCamera && !dims.showIdle) (dims.pillH - target.height) / 2 else 0.dp
     val w = remember { Animatable(target.width, Dp.VectorConverter) }
     val h = remember { Animatable(target.height, Dp.VectorConverter) }
     val x = remember { Animatable(targetX, Dp.VectorConverter) }
@@ -285,7 +291,7 @@ private fun LiveIsland(dims: Dims, compactOffset: Dp, outsideTaps: Int, onWindow
     }
     val window = when {
         wide -> IslandWindow.Wide
-        kind == Kind.Idle -> IslandWindow.Hidden
+        kind == Kind.Idle -> IslandWindow.Hidden // still drawn, just lets touches through
         else -> IslandWindow.Compact
     }
     LaunchedEffect(window) { onWindow(window) }

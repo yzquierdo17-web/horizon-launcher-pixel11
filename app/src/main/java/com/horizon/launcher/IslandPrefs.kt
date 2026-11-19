@@ -17,6 +17,8 @@ data class IslandPlacement(
     val top: Float = -1f,
     /** 0.8 – 1.3 */
     val scale: Float = 1f,
+    /** Keep a small black pill showing when nothing's happening, like iPhone. */
+    val showIdle: Boolean = true,
 )
 
 object IslandPrefs {
@@ -39,6 +41,7 @@ object IslandPrefs {
                 centerX = p.getFloat("cx", -1f),
                 top = p.getFloat("top", -1f),
                 scale = p.getFloat("scale", 1f),
+                showIdle = p.getBoolean("showIdle", true),
             )
             loaded = true
         }
@@ -55,10 +58,41 @@ object IslandPrefs {
             .putFloat("cx", v.centerX)
             .putFloat("top", v.top)
             .putFloat("scale", v.scale)
+            .putBoolean("showIdle", v.showIdle)
             .apply()
     }
 
     fun setEditing(on: Boolean) {
         _editing.value = on
     }
+}
+
+/** Remembers the last crash in the island so Settings can show it (and you can send it to me). */
+object IslandDiagnostics {
+    @Volatile private var installed = false
+
+    fun install(context: Context) {
+        if (installed) return
+        installed = true
+        val app = context.applicationContext
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            record(app, e)
+            previous?.uncaughtException(t, e)
+        }
+    }
+
+    fun record(context: Context, e: Throwable) {
+        val trace = android.util.Log.getStackTraceString(e).take(2500)
+        val stamp = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+        context.getSharedPreferences("island", Context.MODE_PRIVATE).edit()
+            .putString("lastError", "$stamp\n$trace")
+            .commit()
+    }
+
+    fun lastError(context: Context): String? =
+        context.getSharedPreferences("island", Context.MODE_PRIVATE).getString("lastError", null)
+
+    fun clear(context: Context) =
+        context.getSharedPreferences("island", Context.MODE_PRIVATE).edit().remove("lastError").apply()
 }

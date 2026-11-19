@@ -185,7 +185,11 @@ fun SettingsScreen(
                     if (placement.enabled) {
                         ActionRow(
                             "1. Show over all apps",
-                            if (running) "On" else "Off · tap, then turn on Horizon Dynamic Island. If it's greyed out: Settings → Apps → Horizon → ⋮ → Allow restricted settings",
+                            when {
+                                overlayOn -> "On · running"
+                                overlayEnabled -> "Switched on, but Android isn't running it. Tap, turn it off and on again"
+                                else -> "Off · tap, then turn on Horizon Dynamic Island. If it's greyed out: Settings → Apps → Horizon → ⋮ → Allow restricted settings"
+                            },
                         ) {
                             val me = android.content.ComponentName(context, IslandOverlayService::class.java)
                             runCatching {
@@ -196,10 +200,14 @@ fun SettingsScreen(
                                 )
                             }.onFailure { context.startSafely(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                         }
+                        val listening by IslandHub.connected.collectAsState()
                         ActionRow(
                             "2. Notification access",
-                            if (access) "On · calls, timers, music and notifications show"
-                            else "Off · only charging shows. Tap to allow",
+                            when {
+                                access && listening -> "On · running"
+                                access -> "Allowed, but Android isn't running it. Tap, turn it off and on again"
+                                else -> "Off · only charging shows. Tap to allow"
+                            },
                         ) {
                             val component = android.content.ComponentName(context, IslandListener::class.java)
                             val detail = if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -210,6 +218,42 @@ fun SettingsScreen(
                             }
                             runCatching { context.startActivity(detail!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                                 .onFailure { context.startSafely(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                        }
+                        val media by IslandHub.media.collectAsState()
+                        ActionRow(
+                            "Test the island",
+                            if (media != null) "Now playing: ${media?.title} · tap to show a test notification"
+                            else "Tap to show a test notification on the island",
+                        ) {
+                            if (overlayOn) {
+                                IslandHub._peek.value = IslandHub.Peek(
+                                    key = "horizon-test",
+                                    appName = "Horizon",
+                                    title = "The Dynamic Island is working",
+                                    text = "New notifications drop down like this",
+                                    icon = null,
+                                    open = null,
+                                    postedAt = System.currentTimeMillis(),
+                                )
+                            } else {
+                                android.widget.Toast.makeText(context, "Step 1 isn't running yet", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        ToggleRow(
+                            "Resting pill",
+                            "Keep a small black pill around the camera when nothing's happening, like iPhone",
+                            placement.showIdle,
+                        ) { v -> IslandPrefs.update(context) { it.copy(showIdle = v) } }
+                        var lastError by remember { mutableStateOf(IslandDiagnostics.lastError(context)) }
+                        androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                            lastError = IslandDiagnostics.lastError(context)
+                        }
+                        lastError?.let { err ->
+                            ActionRow("Island problem found", "Tap to copy the details and send them to Claude · " + err.lineSequence().take(2).joinToString(" ")) {
+                                val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("Horizon island error", err))
+                                android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         }
                         ActionRow(
                             "Move and resize",
@@ -357,7 +401,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.10"
+    const val NAME = "0.11"
 }
 
 @Composable
