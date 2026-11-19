@@ -1,0 +1,44 @@
+name: Build Horizon Notch (Mac)
+
+on:
+  push:
+    branches: [ "**" ]
+    paths: [ "mac-notch/**", ".github/workflows/mac-notch.yml" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the app
+        working-directory: mac-notch
+        run: |
+          set -o pipefail
+          ./build_app.sh 2>&1 | tee build.log || {
+            grep -E "error:" build.log | head -20 | while read -r line; do echo "::error::$line"; done
+            exit 1
+          }
+
+      - name: Zip it
+        working-directory: mac-notch
+        run: ditto -c -k --keepParent "Horizon Notch.app" HorizonNotch-mac.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HorizonNotch-mac
+          path: mac-notch/HorizonNotch-mac.zip
+
+      # Builds of main go to a release, without becoming the "latest" Horizon APK release
+      - name: Publish
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: notch-${{ github.run_number }}
+          name: Horizon Notch (Mac) ${{ github.run_number }}
+          body: Unzip, drag Horizon Notch to Applications, then right-click → Open the first time.
+          files: mac-notch/HorizonNotch-mac.zip
+          make_latest: "false"
