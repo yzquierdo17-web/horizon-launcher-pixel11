@@ -153,6 +153,8 @@ data class LauncherSettings(
     val iconScale: Float = 1f,
     val homeLabels: Boolean = true,
     val compactClock: Boolean = false,
+    /** Rotating dial clock (watch-bezel style). Takes priority over compactClock. */
+    val dialClock: Boolean = false,
     val showSearch: Boolean = true,
     val wallpaperBlur: Boolean = true,
     val hidden: Set<String> = emptySet(),
@@ -186,6 +188,7 @@ data class LauncherSettings(
         .put("scale", iconScale.toDouble())
         .put("labels", homeLabels)
         .put("compact", compactClock)
+        .put("dialClock", dialClock)
         .put("search", showSearch)
         .put("blur", wallpaperBlur)
         .put("hidden", JSONArray(hidden.toList()))
@@ -212,6 +215,7 @@ data class LauncherSettings(
                 iconScale = o.optDouble("scale", 1.0).toFloat(),
                 homeLabels = o.optBoolean("labels", true),
                 compactClock = o.optBoolean("compact", false),
+                dialClock = o.optBoolean("dialClock", false),
                 showSearch = o.optBoolean("search", true),
                 wallpaperBlur = o.optBoolean("blur", true),
                 hidden = (0 until h.length()).map { h.getString(it) }.toSet(),

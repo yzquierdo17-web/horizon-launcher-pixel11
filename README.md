@@ -16,6 +16,9 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 - Colors follow your wallpaper (Material You)
 - Pull down at the top of the drawer, or press Back, to close it
 
+### Dial clock
+- **Settings → Look → Clock → Dial:** a watch-bezel clock. The big hour sits on the left, and a minute scale and a seconds scale turn smoothly so the current minute and second line up in a pill, with the date in small spaced capitals beside it. Tap the dial for Clock, or the date for Calendar. It redraws about 30 times a second and stops when Home isn't on screen.
+
 ### Add wheel and icons
 - **Add wheel:** long-press empty space on Home. Spin the dial with your finger (it coasts and snaps, with a tick per item), then tap the middle: add a widget, add an app, change icon style or wallpaper, or open settings. You can also tap an item to spin it to the top.
 - **Icon style** (also in Settings → Look): reshape every icon to Circle, Squircle, Rounded square or Teardrop so the grid lines up, or keep the phone default. You can also use any icon pack made for Nova, Lawnchair or ADW. Icons a pack doesn't cover are restyled with its plate and mask, and work-profile badges are kept.

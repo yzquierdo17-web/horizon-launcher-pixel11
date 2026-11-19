@@ -120,10 +120,14 @@ fun SettingsScreen(
             item {
                 ChoiceRow(
                     title = "Clock",
-                    options = listOf("Large" to false, "Compact" to true),
-                    selected = s.compactClock,
+                    options = listOf("Large" to "large", "Compact" to "compact", "Dial" to "dial"),
+                    selected = when {
+                        s.dialClock -> "dial"
+                        s.compactClock -> "compact"
+                        else -> "large"
+                    },
                     accent = accent,
-                ) { v -> vm.updateSettings { it.copy(compactClock = v) } }
+                ) { v -> vm.updateSettings { it.copy(dialClock = v == "dial", compactClock = v == "compact") } }
             }
             item {
                 ToggleRow("Search bar", "Show the search bar under the dock", s.showSearch) { v ->
@@ -268,7 +272,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.5"
+    const val NAME = "0.6"
 }
 
 @Composable

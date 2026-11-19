@@ -715,7 +715,13 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
     }
 
     Column(modifier) {
-        if (compact) {
+        if (settings.dialClock) {
+            DialClock(
+                is24h = DateFormat.is24HourFormat(context),
+                onOpenClock = openClock,
+                onOpenCalendar = openCalendar,
+            )
+        } else if (compact) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = time,
