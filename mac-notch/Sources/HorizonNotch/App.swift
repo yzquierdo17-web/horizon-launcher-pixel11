@@ -17,16 +17,17 @@ enum HorizonNotchMain {
 
 /// A borderless panel that sits over the notch, above the menu bar, on every Space.
 final class NotchPanel: NSPanel {
-    init(frame: NSRect) {
-        super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        isMovable = false
-        ignoresMouseEvents = true
-        hidesOnDeactivate = false
+    static func make(frame: NSRect) -> NotchPanel {
+        let p = NotchPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.hasShadow = false
+        p.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        p.isMovable = false
+        p.ignoresMouseEvents = true
+        p.hidesOnDeactivate = false
+        return p
     }
 
     override var canBecomeKey: Bool { true }
@@ -84,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let panel {
             panel.setFrame(frame, display: true)
         } else {
-            let p = NotchPanel(frame: frame)
+            let p = NotchPanel.make(frame: frame)
             let host = ClickThroughHostingView(rootView: NotchView(model: model))
             host.frame = NSRect(origin: .zero, size: frame.size)
             host.autoresizingMask = [.width, .height]
