@@ -3,8 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)/HorizonNotch"
+# Universal (Apple silicon + Intel) when the toolchain allows it, otherwise this Mac's own chip
+if swift build -c release --arch arm64 --arch x86_64; then
+    BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/HorizonNotch"
+else
+    swift build -c release
+    BIN="$(swift build -c release --show-bin-path)/HorizonNotch"
+fi
 
 APP="Horizon Notch.app"
 rm -rf "$APP"
