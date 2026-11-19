@@ -42,6 +42,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Horizon's dial lock screen: covers Pixel's clock; swipe up to unlock -->
+        <activity
+            android:name=".LockDialActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.horizon.launcher.lock"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Horizon.Lock" />
+
         <!-- "Horizon Dial" live wallpaper: the rotating dial clock for the lock screen -->
         <service
             android:name=".DialWallpaperService"

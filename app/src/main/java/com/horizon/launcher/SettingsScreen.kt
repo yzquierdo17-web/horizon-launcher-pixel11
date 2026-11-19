@@ -141,6 +141,19 @@ fun SettingsScreen(
                 }
             }
             item {
+                var lockDial by remember { mutableStateOf(LockDialPrefs.enabled(context)) }
+                val overlayOn by IslandHub.overlay.collectAsState()
+                ToggleRow(
+                    "Only the dial on the lock screen",
+                    if (lockDial && !overlayOn) "Needs Show over all apps (Dynamic Island, step 1) to be on"
+                    else "Covers Pixel's own clock with Horizon's dial. Swipe up to unlock; pull down for notifications",
+                    lockDial,
+                ) { v ->
+                    lockDial = v
+                    LockDialPrefs.set(context, v)
+                }
+            }
+            item {
                 ToggleRow("Search bar", "Show the search bar under the dock", s.showSearch) { v ->
                     vm.updateSettings { it.copy(showSearch = v) }
                 }
@@ -344,7 +357,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.9"
+    const val NAME = "0.10"
 }
 
 @Composable

@@ -64,6 +64,14 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
     private var mode = IslandWindow.Hidden
 
     private val geometry = MutableStateFlow<IslandGeometry?>(null)
+
+    // Horizon's dial lock screen goes up as the screen turns off, so it's there when you wake the phone
+    private val screenOff = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context, i: android.content.Intent) = LockDialActivity.showIfWanted(
+            this@IslandOverlayService,
+            screenOn = i.action == android.content.Intent.ACTION_SCREEN_ON,
+        )
+    }
     private val outsideTaps = MutableStateFlow(0)
 
     override fun onCreate() {
@@ -81,6 +89,13 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         addWindow()
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         watchPlacement()
+        androidx.core.content.ContextCompat.registerReceiver(
+            this, screenOff, android.content.IntentFilter().apply {
+                addAction(android.content.Intent.ACTION_SCREEN_OFF)
+                addAction(android.content.Intent.ACTION_SCREEN_ON)
+            },
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED,
+        )
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -93,6 +108,7 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(screenOff) }
         IslandHub._overlay.value = false
         root?.let { v -> runCatching { wm?.removeView(v) } }
         root = null

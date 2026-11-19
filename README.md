@@ -20,6 +20,9 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 - **Settings → Look → Clock → Dial:** a watch-bezel clock. The big hour sits on the left, and a minute scale and a seconds scale turn smoothly so the current minute and second line up in a pill, with the date in small spaced capitals beside it. Tap the dial for Clock, or the date for Calendar. It redraws about 30 times a second and stops when Home isn't on screen.
 - **On your lock screen:** Settings → Look → **Dial on lock screen** opens the *Horizon Dial* live wallpaper. Tap **Set wallpaper** and choose **Lock screen**. It shows the same dial with smooth seconds on a dark charcoal background, plus your battery level, and only animates while the screen is on. Pixel's own lock-screen clock always stays on top; to make it less noticeable, pick a small clock style in Wallpaper & style → Lock screen.
 
+### Only the dial on the lock screen
+Android doesn't let apps switch off the Pixel's own lock screen clock, so **Settings → Only the dial on the lock screen** makes Horizon's dial the lock screen instead: it covers Pixel's clock, and you swipe up to unlock (then fingerprint, face or PIN as usual). Pull down from the top for notifications and quick settings. It needs **Show over all apps** (Dynamic Island, step 1) to be on. The always-on display still shows Pixel's clock.
+
 ### Dynamic Island
 A black pill that wraps the camera hole and grows to show what's happening, over every app and on the lock screen, like on iPhone.
 - **Calls:** a green pill with the call length. Incoming calls open the island with **Answer** and **Decline**; tap during a call for **Hang up**.
