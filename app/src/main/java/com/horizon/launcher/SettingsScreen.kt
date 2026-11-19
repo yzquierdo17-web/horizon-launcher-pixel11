@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -152,21 +153,40 @@ fun SettingsScreen(
 
             item { Section("Dynamic Island") }
             item {
+                val placement by IslandPrefs.placement.collectAsState()
+                val overlayOn by IslandHub.overlay.collectAsState()
                 var access by remember { mutableStateOf(IslandHub.hasAccess(context)) }
+                var overlayEnabled by remember { mutableStateOf(IslandOverlayService.isEnabled(context)) }
+                LaunchedEffect(Unit) { IslandPrefs.load(context) }
                 androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                     access = IslandHub.hasAccess(context)
+                    overlayEnabled = IslandOverlayService.isEnabled(context)
                 }
+                val running = overlayOn || overlayEnabled
                 Column {
                     ToggleRow(
                         "Dynamic Island",
-                        "Calls, timers, music, charging and new notifications around the camera on Home. Tap it to expand, hold to open the app",
-                        s.dynamicIsland,
-                    ) { v -> vm.updateSettings { it.copy(dynamicIsland = v) } }
-                    if (s.dynamicIsland) {
+                        "Calls, timers, music, charging and new notifications around the camera, over every app. Tap to expand, pull down to open, hold to open the app",
+                        placement.enabled,
+                    ) { v -> IslandPrefs.update(context) { it.copy(enabled = v) } }
+                    if (placement.enabled) {
                         ActionRow(
-                            "Notification access",
-                            if (access) "On · the island can show calls, timers, music and notifications"
-                            else "Off · only charging shows. Tap to allow. If Android says it's restricted: App info → ⋮ → Allow restricted settings",
+                            "1. Show over all apps",
+                            if (running) "On" else "Off · tap, then turn on Horizon Dynamic Island. If it's greyed out: Settings → Apps → Horizon → ⋮ → Allow restricted settings",
+                        ) {
+                            val me = android.content.ComponentName(context, IslandOverlayService::class.java)
+                            runCatching {
+                                context.startActivity(
+                                    Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                                        .putExtra(Intent.EXTRA_COMPONENT_NAME, me.flattenToString())
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }.onFailure { context.startSafely(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                        }
+                        ActionRow(
+                            "2. Notification access",
+                            if (access) "On · calls, timers, music and notifications show"
+                            else "Off · only charging shows. Tap to allow",
                         ) {
                             val component = android.content.ComponentName(context, IslandListener::class.java)
                             val detail = if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -177,6 +197,16 @@ fun SettingsScreen(
                             }
                             runCatching { context.startActivity(detail!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                                 .onFailure { context.startSafely(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                        }
+                        ActionRow(
+                            "Move and resize",
+                            (if (placement.onCamera) "On the camera" else "Custom spot") + " · ${(placement.scale * 100).toInt()}% size",
+                        ) {
+                            if (overlayOn) {
+                                IslandPrefs.setEditing(true)
+                            } else {
+                                android.widget.Toast.makeText(context, "Turn on Show over all apps first", android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
@@ -314,7 +344,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.8"
+    const val NAME = "0.9"
 }
 
 @Composable

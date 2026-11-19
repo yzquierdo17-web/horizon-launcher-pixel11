@@ -90,6 +90,9 @@ object IslandHub {
     internal val _timer = MutableStateFlow<Timer?>(null)
     internal val _peek = MutableStateFlow<Peek?>(null)
     internal val _connected = MutableStateFlow(false)
+    /** True while the overlay (accessibility) service is running. */
+    internal val _overlay = MutableStateFlow(false)
+    val overlay: StateFlow<Boolean> = _overlay.asStateFlow()
 
     val media: StateFlow<Media?> = _media.asStateFlow()
     val call: StateFlow<Call?> = _call.asStateFlow()
@@ -201,21 +204,81 @@ class IslandListener : NotificationListenerService() {
         }
 
         val clockApp = sbn.packageName.contains("deskclock") || sbn.packageName.contains("clock")
-        val isTimer = chrono && countDown
-        val isStopwatch = chrono && !countDown && clockApp && sbn.isOngoing
-        val pausedClock = !chrono && clockApp && sbn.isOngoing &&
-            (n.category == Notification.CATEGORY_ALARM || n.category == "stopwatch" ||
-                n.category == Notification.CATEGORY_PROGRESS || title.contains("timer", true) || title.contains("stopwatch", true))
-        if (isTimer || isStopwatch || pausedClock) {
+        if (chrono) {
+            // Standard chronometer notification: `when` is the end (countdown) or the start (stopwatch)
+            if (countDown || (clockApp && sbn.isOngoing)) {
+                IslandHub._timer.value = IslandHub.Timer(
+                    key = sbn.key,
+                    label = title.ifBlank { if (countDown) "Timer" else "Stopwatch" },
+                    time = n.`when`,
+                    countDown = countDown,
+                    text = text.ifBlank { title },
+                    open = n.contentIntent,
+                )
+            }
+            return
+        }
+        if (!sbn.isOngoing) return
+
+        // Google Clock draws its timers and stopwatch in its own layout, so build that layout here
+        // and read the running clock out of it.
+        val custom = readCustomChronometer(n)
+        if (custom != null) {
+            val (chronometer, texts) = custom
+            val all = (texts + title + text).joinToString(" ").lowercase()
+            // A paused timer offers "Resume"/"Start" instead of "Pause"
+            val buttons = n.actions.orEmpty().map { it.title?.toString()?.lowercase().orEmpty() }
+            val paused = all.contains("paused") ||
+                (buttons.any { it.contains("resume") || it == "start" } && buttons.none { it.contains("pause") })
+            val countdown = chronometer.isCountDown
+            // Chronometer.base is on the elapsedRealtime clock; turn it into wall-clock time
+            val wall = System.currentTimeMillis() + (chronometer.base - SystemClock.elapsedRealtime())
             IslandHub._timer.value = IslandHub.Timer(
                 key = sbn.key,
-                label = title.ifBlank { if (isStopwatch) "Stopwatch" else "Timer" },
-                time = if (chrono) n.`when` else null,
-                countDown = countDown || !isStopwatch,
-                text = text.ifBlank { title },
+                label = title.ifBlank { texts.firstOrNull { it.isNotBlank() && !it.contains(':') } ?: if (countdown) "Timer" else "Stopwatch" },
+                time = if (paused) null else wall,
+                countDown = countdown,
+                text = chronometer.text?.toString().orEmpty().ifBlank { "Paused" }.let { if (paused) "Paused · $it" else it },
+                open = n.contentIntent,
+            )
+            return
+        }
+
+        // A clock notification without a running clock (e.g. "Time's up")
+        if (clockApp && (n.category == Notification.CATEGORY_ALARM || n.category == "stopwatch" ||
+                title.contains("timer", true) || title.contains("time's up", true))
+        ) {
+            IslandHub._timer.value = IslandHub.Timer(
+                key = sbn.key,
+                label = title.ifBlank { "Timer" },
+                time = null,
+                countDown = true,
+                text = title.ifBlank { text },
                 open = n.contentIntent,
             )
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun readCustomChronometer(n: Notification): Pair<android.widget.Chronometer, List<String>>? {
+        val views = listOfNotNull(n.contentView, n.bigContentView, n.headsUpContentView)
+        if (views.isEmpty()) return null
+        for (rv in views) {
+            val parent = android.widget.FrameLayout(this)
+            val inflated = runCatching { rv.apply(this, parent) }.getOrNull() ?: continue
+            var found: android.widget.Chronometer? = null
+            val texts = mutableListOf<String>()
+            fun walk(v: android.view.View) {
+                when (v) {
+                    is android.widget.Chronometer -> if (found == null) found = v
+                    is android.widget.TextView -> texts += v.text?.toString().orEmpty()
+                    is android.view.ViewGroup -> for (i in 0 until v.childCount) walk(v.getChildAt(i))
+                }
+            }
+            walk(inflated)
+            found?.let { return it to texts }
+        }
+        return null
     }
 
     // ---------- Notification peeks ----------

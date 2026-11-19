@@ -21,15 +21,20 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 - **On your lock screen:** Settings → Look → **Dial on lock screen** opens the *Horizon Dial* live wallpaper. Tap **Set wallpaper** and choose **Lock screen**. It shows the same dial with smooth seconds on a dark charcoal background, plus your battery level, and only animates while the screen is on. Pixel's own lock-screen clock always stays on top; to make it less noticeable, pick a small clock style in Wallpaper & style → Lock screen.
 
 ### Dynamic Island
-A black pill that wraps the camera hole at the top of Home and grows to show what's happening. Turn it on or off in **Settings → Dynamic Island**.
+A black pill that wraps the camera hole and grows to show what's happening, over every app and on the lock screen, like on iPhone.
 - **Calls:** a green pill with the call length. Incoming calls open the island with **Answer** and **Decline**; tap during a call for **Hang up**.
-- **Timers and stopwatches** from the Clock app count down in orange.
-- **Music:** album art on one side and moving bars in the art's colour on the other. Tap for the track, a seek bar and play/pause/skip; hold to open the music app.
+- **Timers and stopwatches** from the Clock app count down in orange (paused ones show the time left).
+- **Music:** album art on one side and moving bars in the art's colour on the other. Tap or pull down for the track, a seek bar and play/pause/skip; hold to open the music app.
 - **Charging:** plugging in or unplugging shows the battery level for a moment; while charging it stays as a small green pill.
-- **New notifications** drop down from the camera for a few seconds. Tap one to open it, or swipe up to dismiss.
-- Tap the island to expand it, tap outside or swipe up to shrink it, hold to open the app behind it.
-- Calls, timers, music and notifications need **Notification access** (Settings → Dynamic Island → Notification access). Because Horizon is installed from a download, Android may say the setting is restricted: open Settings → Apps → Horizon, tap **⋮ → Allow restricted settings**, then try again.
-- A launcher can only draw on its own screen, so the island shows on Home and not inside other apps.
+- **New notifications** drop down from the camera for a few seconds. Tap to open, swipe up to dismiss.
+- Tap or pull down to expand, tap anywhere else or swipe up to shrink, hold to open the app behind it. It springs and settles like the iPhone's.
+- **Move and resize** (Settings → Dynamic Island): drag the island anywhere on the screen, or back to the camera to snap it on. Make it smaller or bigger.
+
+**Setup** (Settings → Dynamic Island):
+1. **Show over all apps** turns on *Horizon Dynamic Island* in Accessibility. Android only lets accessibility services draw above the status bar; Horizon's only draws the island and doesn't read your screen.
+2. **Notification access** lets it see calls, timers, music and notifications.
+
+Because Horizon is installed from a download, Android may grey these out as restricted. Open Settings → Apps → Horizon, tap **⋮ → Allow restricted settings**, then try again.
 
 ### Add wheel and icons
 - **Add wheel:** long-press empty space on Home. Spin the dial with your finger (it coasts and snaps, with a tick per item), then tap the middle: add a widget, add an app, change icon style or wallpaper, or open settings. You can also tap an item to spin it to the top.

@@ -175,8 +175,6 @@ data class LauncherSettings(
     val iconShape: String = "system",
     /** Package of the chosen icon pack, or "" for none. */
     val iconPack: String = "",
-    /** Dynamic Island around the camera on the home screen. */
-    val dynamicIsland: Boolean = true,
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -205,7 +203,6 @@ data class LauncherSettings(
         .put("workApps", JSONArray(workApps.toList()))
         .put("iconShape", iconShape)
         .put("iconPack", iconPack)
-        .put("island", dynamicIsland)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -233,7 +230,6 @@ data class LauncherSettings(
                 workApps = (0 until wa.length()).map { wa.getString(it) }.toSet(),
                 iconShape = o.optString("iconShape", "system"),
                 iconPack = o.optString("iconPack", ""),
-                dynamicIsland = o.optBoolean("island", true),
             )
         }
     }

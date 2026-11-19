@@ -331,11 +331,6 @@ private fun LauncherContent(
             },
         )
 
-        // Dynamic Island around the camera, on the home screen only
-        if (settings.dynamicIsland && progress < 0.999f && !drag.active) {
-            DynamicIsland(Modifier.graphicsLayer { alpha = 1f - progress })
-        }
-
         if (progress > 0.001f || drag.payload is DragPayload.FromDrawer) {
             AppDrawer(
                 apps = visibleApps,
