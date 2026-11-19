@@ -170,6 +170,7 @@ private fun LauncherContent(
     val pickerOpen by vm.widgetPicker.collectAsState()
     val homeSignal by vm.homeSignal.collectAsState()
     val settingsOpen by vm.settingsOpen.collectAsState()
+    val overlay by vm.overlay.collectAsState()
 
     val drag = remember { DragController() }
     val view = LocalView.current
@@ -235,8 +236,9 @@ private fun LauncherContent(
             .collect { if (it != null) view.tick() }
     }
 
-    BackHandler(enabled = drawerOpen || openFolderId != null || pickerOpen || settingsOpen) {
+    BackHandler(enabled = drawerOpen || openFolderId != null || pickerOpen || settingsOpen || overlay != null) {
         when {
+            overlay != null -> vm.showOverlay(null)
             settingsOpen -> vm.openSettings(false)
             pickerOpen -> vm.showWidgetPicker(false)
             openFolderId != null -> vm.closeFolder()
@@ -381,6 +383,13 @@ private fun LauncherContent(
             )
         }
 
+        when (overlay) {
+            LauncherViewModel.Overlay.Wheel -> AddWheel(vm) { vm.showOverlay(null) }
+            LauncherViewModel.Overlay.AddApp -> AddAppScreen(vm, visibleApps) { vm.showOverlay(null) }
+            LauncherViewModel.Overlay.IconStyle -> IconStyleScreen(vm, visibleApps) { vm.showOverlay(null) }
+            null -> Unit
+        }
+
         // "Remove" target at the top while dragging something off the home screen or dock
         if (drag.active && drag.payload !is DragPayload.FromDrawer) {
             val over = drag.overRemove()
@@ -454,7 +463,6 @@ private fun HomeScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val settings = LocalSettings.current
-    var menu by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
     val tracker = remember { VelocityTracker() }
     val swipe by rememberUpdatedState(onSwipe)
@@ -487,7 +495,7 @@ private fun HomeScreen(
                 detectTapGestures(onLongPress = {
                     if (!drag.itemPressed) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menu = true
+                        vm.showOverlay(LauncherViewModel.Overlay.Wheel)
                     }
                 })
             },
@@ -550,19 +558,6 @@ private fun HomeScreen(
             Spacer(Modifier.height(14.dp))
         }
 
-        Box(Modifier.align(Alignment.Center)) {
-            ItemMenu(
-                expanded = menu,
-                onDismiss = { menu = false },
-                actions = listOf(
-                    MenuAction("Widgets") { vm.showWidgetPicker(true) },
-                    MenuAction("Wallpaper & style") {
-                        context.startSafely(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
-                    },
-                    MenuAction("Horizon settings") { vm.openSettings(true) },
-                ),
-            )
-        }
     }
 }
 
@@ -1518,7 +1513,7 @@ private fun atAGlance(context: Context, timePattern: String): List<String> {
     return parts
 }
 
-private fun View.tick() {
+internal fun View.tick() {
     performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
 }
 

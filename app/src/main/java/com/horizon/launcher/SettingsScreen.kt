@@ -94,6 +94,12 @@ fun SettingsScreen(
         ) {
             item { Section("Look") }
             item {
+                val shape = IconShape.of(s.iconShape).label
+                ActionRow("Icon style", if (s.iconPack.isEmpty()) "$shape · no icon pack" else "$shape · icon pack on") {
+                    vm.showOverlay(LauncherViewModel.Overlay.IconStyle)
+                }
+            }
+            item {
                 ToggleRow("Themed icons", "Tint icons to match your wallpaper, like Pixel", s.themedIcons) { v ->
                     vm.updateSettings { it.copy(themedIcons = v) }
                 }
@@ -262,7 +268,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.4"
+    const val NAME = "0.5"
 }
 
 @Composable

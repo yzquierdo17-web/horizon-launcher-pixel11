@@ -169,6 +169,10 @@ data class LauncherSettings(
     val suggestions: Boolean = true,
     /** Apps you've put on the Work tab yourself (app keys), on top of any work-profile apps. */
     val workApps: Set<String> = emptySet(),
+    /** IconShape id. "system" keeps the phone's own icon shape. */
+    val iconShape: String = "system",
+    /** Package of the chosen icon pack, or "" for none. */
+    val iconPack: String = "",
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -194,6 +198,8 @@ data class LauncherSettings(
         .put("meetingPrompt", meetingPromptDone)
         .put("suggestions", suggestions)
         .put("workApps", JSONArray(workApps.toList()))
+        .put("iconShape", iconShape)
+        .put("iconPack", iconPack)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -218,6 +224,8 @@ data class LauncherSettings(
                 meetingPromptDone = o.optBoolean("meetingPrompt", false),
                 suggestions = o.optBoolean("suggestions", true),
                 workApps = (0 until wa.length()).map { wa.getString(it) }.toSet(),
+                iconShape = o.optString("iconShape", "system"),
+                iconPack = o.optString("iconPack", ""),
             )
         }
     }

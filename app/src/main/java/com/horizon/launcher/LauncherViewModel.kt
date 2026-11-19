@@ -238,51 +238,27 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadApps(): List<AppEntry> {
         val ctx = getApplication<Application>()
         val px = (72 * ctx.resources.displayMetrics.density).toInt()
-        val themed = _settings.value.themedIcons
+        val s = _settings.value
+        val pack = s.iconPack.takeIf { it.isNotEmpty() }?.let { IconPack.load(ctx, it) }
+        val renderer = IconRenderer(ctx, px, IconShape.of(s.iconShape), s.themedIcons, pack)
         val me = Process.myUserHandle()
         val quiet = userManager.userProfiles.filter { it != me && userManager.isQuietModeEnabled(it) }.toSet()
         return userManager.userProfiles
             .flatMap { user -> launcherApps.getActivityList(null, user) }
             .filter { it.componentName.packageName != ctx.packageName }
             .map { info ->
-                val themedIcon = if (themed && info.user == me) {
-                    runCatching { themedBitmap(ctx, info.getIcon(0), px) }.getOrNull()
-                } else {
-                    null
-                }
                 AppEntry(
                     label = info.label.toString(),
                     component = info.componentName,
                     user = info.user,
                     serial = userManager.getSerialNumberForUser(info.user),
-                    icon = (themedIcon ?: info.getBadgedIcon(0).toBitmap(px, px)).asImageBitmap(),
+                    icon = (runCatching { renderer.render(info) }.getOrNull()
+                        ?: info.getBadgedIcon(0).toBitmap(px, px)).asImageBitmap(),
                     isWork = info.user != me,
                     isPaused = info.user in quiet,
                 )
             }
             .sortedBy { it.label.lowercase() }
-    }
-
-    /** Pixel-style themed icon: the app's monochrome layer tinted with wallpaper colors. */
-    private fun themedBitmap(ctx: Context, drawable: Drawable, px: Int): Bitmap? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
-        val mono = (drawable as? AdaptiveIconDrawable)?.monochrome ?: return null
-        val bg = ctx.getColor(android.R.color.system_accent1_800)
-        val fg = ctx.getColor(android.R.color.system_accent1_100)
-        val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        val circle = Path().apply { addCircle(px / 2f, px / 2f, px / 2f, Path.Direction.CW) }
-        canvas.drawPath(circle, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bg })
-        canvas.save()
-        canvas.clipPath(circle)
-        val layer = mono.mutate()
-        layer.setTint(fg)
-        // The monochrome layer is 108dp with a 72dp visible area, so draw it 1.5x and centered.
-        val inset = (px * 0.25f).toInt()
-        layer.setBounds(-inset, -inset, px + inset, px + inset)
-        layer.draw(canvas)
-        canvas.restore()
-        return bmp
     }
 
     private fun ensureDefaultDock(list: List<AppEntry>) {
@@ -358,7 +334,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (new == old) return
         _settings.value = new
         prefs.edit().putString(KEY_SETTINGS, new.toJson().toString()).apply()
-        if (old.themedIcons != new.themedIcons) refresh()
+        if (old.themedIcons != new.themedIcons || old.iconShape != new.iconShape || old.iconPack != new.iconPack) refresh()
     }
 
     fun exportLayout(): String = JSONObject()
@@ -410,8 +386,22 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         _widgetPicker.value = show
     }
 
+    /** Full-screen helpers opened from the add wheel (or Settings, for Icon style). */
+    enum class Overlay { Wheel, AddApp, IconStyle }
+
+    private val _overlay = MutableStateFlow<Overlay?>(null)
+    val overlay: StateFlow<Overlay?> = _overlay.asStateFlow()
+
+    fun showOverlay(o: Overlay?) {
+        _overlay.value = o
+    }
+
+    fun iconPacks(): List<IconPackInfo> = installedIconPacks(getApplication())
+
     fun onHomePressed(alreadyOnTop: Boolean) {
-        val wasOverlay = _drawerOpen.value || _openFolder.value != null || _widgetPicker.value || _settingsOpen.value
+        val wasOverlay = _drawerOpen.value || _openFolder.value != null || _widgetPicker.value ||
+            _settingsOpen.value || _overlay.value != null
+        showOverlay(null)
         closeDrawer()
         closeFolder()
         showWidgetPicker(false)

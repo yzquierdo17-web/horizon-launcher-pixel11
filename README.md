@@ -16,6 +16,10 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 - Colors follow your wallpaper (Material You)
 - Pull down at the top of the drawer, or press Back, to close it
 
+### Add wheel and icons
+- **Add wheel:** long-press empty space on Home. Spin the dial with your finger (it coasts and snaps, with a tick per item), then tap the middle: add a widget, add an app, change icon style or wallpaper, or open settings. You can also tap an item to spin it to the top.
+- **Icon style** (also in Settings → Look): reshape every icon to Circle, Squircle, Rounded square or Teardrop so the grid lines up, or keep the phone default. You can also use any icon pack made for Nova, Lawnchair or ADW. Icons a pack doesn't cover are restyled with its plate and mask, and work-profile badges are kept.
+
 ### For work
 - **Work and Personal tabs** in the drawer. Put any app on Work: long-press it and choose **Add to Work tab**, or open the Work tab and tap **Choose apps** to tick several at once. If your phone has a work profile, its apps are on Work automatically, and a **Pause work apps** button turns them and their notifications off. Paused apps show in grey; tap one to turn work apps back on.
 - **Work hours** (Settings → Work): choose start and end times and days. During work hours the drawer opens on Work and the clock shows "Work hours · until 6:00 PM". Optionally pause work apps after hours and turn them back on in the morning. Android only allows this while Horizon is on screen, so if the phone is locked at closing time it happens the next time you go Home.
