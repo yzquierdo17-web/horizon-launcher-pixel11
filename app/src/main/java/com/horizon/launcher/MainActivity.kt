@@ -81,6 +81,14 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.onResume() // refreshes apps, applies work hours, refreshes the meeting line
+        // Wake the Dynamic Island's listener if access is on but Android hasn't connected it yet
+        if (IslandHub.hasAccess(this) && !IslandHub.connected.value) {
+            runCatching {
+                android.service.notification.NotificationListenerService.requestRebind(
+                    android.content.ComponentName(this, IslandListener::class.java),
+                )
+            }
+        }
     }
 
     // Pressing Home while Horizon is showing closes overlays, then goes to the first page.

@@ -150,6 +150,38 @@ fun SettingsScreen(
                 }
             }
 
+            item { Section("Dynamic Island") }
+            item {
+                var access by remember { mutableStateOf(IslandHub.hasAccess(context)) }
+                androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                    access = IslandHub.hasAccess(context)
+                }
+                Column {
+                    ToggleRow(
+                        "Dynamic Island",
+                        "Calls, timers, music, charging and new notifications around the camera on Home. Tap it to expand, hold to open the app",
+                        s.dynamicIsland,
+                    ) { v -> vm.updateSettings { it.copy(dynamicIsland = v) } }
+                    if (s.dynamicIsland) {
+                        ActionRow(
+                            "Notification access",
+                            if (access) "On · the island can show calls, timers, music and notifications"
+                            else "Off · only charging shows. Tap to allow. If Android says it's restricted: App info → ⋮ → Allow restricted settings",
+                        ) {
+                            val component = android.content.ComponentName(context, IslandListener::class.java)
+                            val detail = if (android.os.Build.VERSION.SDK_INT >= 30) {
+                                Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component.flattenToString())
+                            } else {
+                                null
+                            }
+                            runCatching { context.startActivity(detail!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                                .onFailure { context.startSafely(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                        }
+                    }
+                }
+            }
+
             item { Section("Work") }
             item {
                 ToggleRow(
@@ -282,7 +314,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.7"
+    const val NAME = "0.8"
 }
 
 @Composable

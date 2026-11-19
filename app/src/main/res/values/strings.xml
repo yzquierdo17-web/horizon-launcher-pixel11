@@ -3,4 +3,5 @@
     <string name="app_name">Horizon</string>
     <string name="dial_wallpaper_name">Horizon Dial</string>
     <string name="dial_wallpaper_desc">Rotating dial clock with smooth seconds, for your lock screen</string>
+    <string name="island_name">Horizon Dynamic Island</string>
 </resources>

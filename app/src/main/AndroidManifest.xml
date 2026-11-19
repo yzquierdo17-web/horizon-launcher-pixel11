@@ -55,5 +55,16 @@
                 android:name="android.service.wallpaper"
                 android:resource="@xml/dial_wallpaper" />
         </service>
+
+        <!-- Dynamic Island: reads calls, timers, music and new notifications (once you allow access) -->
+        <service
+            android:name=".IslandListener"
+            android:exported="true"
+            android:label="@string/island_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
