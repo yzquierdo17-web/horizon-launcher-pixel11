@@ -30,22 +30,29 @@ jobs:
           gradle-version: "8.11.1"
 
       # Sign with the permanent key when the HORIZON_KEYSTORE and HORIZON_KEY_PASSWORD secrets are set,
-      # so every update installs over the last one and keeps your layout.
+      # so every update installs over the last one and keeps your layout. Stray spaces and line breaks
+      # from copy-paste are removed; if the key still can't be opened, fall back to a temporary key.
       - name: Load signing key
         env:
           KEYSTORE_B64: ${{ secrets.HORIZON_KEYSTORE }}
+          KEY_PW: ${{ secrets.HORIZON_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/horizon.jks"
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEY_PW" ]; then
+            echo "::warning::Signing secrets not set: this build uses a temporary key"
+            exit 0
+          fi
+          PW=$(printf '%s' "$KEY_PW" | tr -d ' \r\n\t')
+          echo "::add-mask::$PW"
+          printf '%s' "$KEYSTORE_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/horizon.jks" 2>/dev/null || true
+          if keytool -list -keystore "$RUNNER_TEMP/horizon.jks" -storepass "$PW" -alias horizon >/dev/null 2>&1; then
             echo "HORIZON_KEYSTORE_PATH=$RUNNER_TEMP/horizon.jks" >> "$GITHUB_ENV"
+            echo "HORIZON_KEY_PASSWORD=$PW" >> "$GITHUB_ENV"
             echo "Signing with the permanent Horizon key"
           else
-            echo "::warning::HORIZON_KEYSTORE secret not set: this build uses a temporary key"
+            echo "::warning::Couldn't open the signing key with that password: this build uses a temporary key"
           fi
 
       - name: Build the APK
-        env:
-          HORIZON_KEY_PASSWORD: ${{ secrets.HORIZON_KEY_PASSWORD }}
         run: |
           set -o pipefail
           gradle assembleDebug 2>&1 | tee build.log || {
