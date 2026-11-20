@@ -77,7 +77,7 @@ fun SettingsScreen(
         Modifier
             .fillMaxSize()
             .swallowTouches()
-            .background(Color(0xFA0D1016))
+            .background(LocalThemeSurface.current.copy(alpha = 0.98f))
             .statusBarsPadding(),
     ) {
         Row(
@@ -98,6 +98,21 @@ fun SettingsScreen(
             modifier = Modifier.navigationBarsPadding(),
         ) {
             item { Section("Look") }
+            item {
+                ChoiceRow(
+                    title = "Theme",
+                    options = HorizonLook.entries.map { it.label to it.id },
+                    selected = s.theme,
+                    accent = accent,
+                ) { v -> vm.updateSettings { it.copy(theme = v) } }
+            }
+            item {
+                ToggleRow(
+                    "Wallpaper glides with pages",
+                    "Moves your wallpaper as you swipe Home pages. Shows with wide or live wallpapers",
+                    s.parallax,
+                ) { v -> vm.updateSettings { it.copy(parallax = v) } }
+            }
             item {
                 ChoiceRow(
                     title = "Font",
@@ -531,7 +546,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.14"
+    const val NAME = "0.15"
 }
 
 @Composable

@@ -187,7 +187,7 @@ fun WidgetPicker(
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color(0xF70D1016))
+            .background(LocalThemeSurface.current.copy(alpha = 0.97f))
             .swallowTouches()
             .statusBarsPadding(),
     ) {

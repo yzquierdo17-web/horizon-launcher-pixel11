@@ -20,6 +20,14 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 - **Optimized build:** the install link now gives an R8-optimized release build with a startup profile. It launches faster and scrolls more smoothly than the old debug build.
 - **Icon cache:** finished icons (shape, pack, themed colours) are saved, so Home appears instantly after a restart or update.
 - **Frosted glass dock and search bar** that float above the wallpaper.
+- **Themes** (Settings → Look → Theme):
+  - **Wallpaper:** Material You colours from your wallpaper.
+  - **Graphite:** soft neutral greys.
+  - **Midnight:** deep navy with blue accents.
+  - **AMOLED:** true black, which saves battery on OLED screens.
+
+  The drawer, folders, settings, add wheel and lock-screen dial all follow the theme.
+- **Motion:** the wallpaper glides as you swipe pages (with wide or live wallpapers; you can turn this off), pages settle with a soft spring, and apps ripple in when the drawer opens.
 - **Inter font** across Horizon (clock, labels, settings, dial and lock screen). Switch back to the phone's font in Settings → Look → Font. Inter is © The Inter Project Authors, SIL Open Font License 1.1 (see `FONT-LICENSE-Inter.txt`).
 
 ### Everyday

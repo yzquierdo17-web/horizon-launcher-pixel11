@@ -1,5 +1,7 @@
 package com.horizon.launcher
 
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.shadow
 import kotlinx.coroutines.withContext
@@ -159,12 +161,16 @@ fun LauncherScreen(
     val focusActive by vm.focusActive.collectAsState()
     val focusKeys = if (focusActive) settings.focusApps else emptySet()
     val font = if (settings.appFont == "system") null else InterFamily
-    val colors = MaterialTheme.colorScheme
+    val look = HorizonLook.of(settings.theme)
+    val baseColors = MaterialTheme.colorScheme
+    val themeContext = LocalContext.current
+    val colors = remember(look, baseColors) { colorSchemeFor(look, themeContext, baseColors) }
     CompositionLocalProvider(
         LocalSettings provides settings,
         LocalAppShortcuts provides shortcuts,
         LocalFocusKeys provides focusKeys,
         LocalAppFont provides font,
+        LocalThemeSurface provides look.surface,
     ) {
         MaterialTheme(colorScheme = colors, typography = typographyFor(font)) {
             LauncherContent(vm, settings, onAddWidget, onBlur, onBackup, onRestore)
@@ -201,6 +207,21 @@ private fun LauncherContent(
     val pageCount = (items.maxOfOrNull { it.page } ?: 0) + 1 + (if (drag.active) 1 else 0)
     val pageCountState = rememberUpdatedState(pageCount)
     val pager = rememberPagerState { pageCountState.value }
+
+    // The wallpaper glides sideways as you swipe pages (visible with wide or live wallpapers).
+    LaunchedEffect(pager, settings.parallax) {
+        val wm = android.app.WallpaperManager.getInstance(view.context)
+        snapshotFlow { (pager.currentPage + pager.currentPageOffsetFraction) to pageCountState.value }
+            .collect { (pos, count) ->
+                val token = view.windowToken ?: return@collect
+                val steps = if (count > 1) 1f / (count - 1) else 0f
+                val x = if (!settings.parallax || count <= 1) 0.5f else (pos / (count - 1)).coerceIn(0f, 1f)
+                runCatching {
+                    wm.setWallpaperOffsetSteps(steps, 1f)
+                    wm.setWallpaperOffsets(token, x, 0.5f)
+                }
+            }
+    }
 
     var lastPage by remember { mutableStateOf(-1) }
     LaunchedEffect(pager.currentPage) {
@@ -592,6 +613,11 @@ private fun HomeScreen(
             HorizontalPager(
                 state = pager,
                 userScrollEnabled = !drag.active,
+                // Pages settle with a soft spring instead of a flat stop.
+                flingBehavior = PagerDefaults.flingBehavior(
+                    state = pager,
+                    snapAnimationSpec = spring(dampingRatio = 0.78f, stiffness = 360f),
+                ),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -1083,6 +1109,8 @@ private fun AppDrawer(
         vm.updateSettings { it.copy(contactsPromptDone = true) }
     }
     val hiddenCount = settings.hidden.size
+    // When the drawer opens, apps ripple in one after another (only on open, not while scrolling).
+    val openedAt = remember { System.currentTimeMillis() }
 
     // Most-opened apps on top.
     val byKey = remember(apps) { apps.associateBy { it.key } }
@@ -1146,7 +1174,7 @@ private fun AppDrawer(
         modifier
             .fillMaxSize()
             .swallowTouches()
-            .background(if (blurOn) Color(0xB80D1016) else Color(0xF00D1016))
+            .background(LocalThemeSurface.current.copy(alpha = if (blurOn) 0.72f else 0.94f))
             .statusBarsPadding()
             .imePadding(),
     ) {
@@ -1293,9 +1321,11 @@ private fun AppDrawer(
                         )
                     }
                 }
-                items(filtered, key = { it.key }) { app ->
-                    if (minimal) MinimalAppRow(app, vm, dockKeys, onLaunch, fontSize = 22.sp)
-                    else DrawerAppIcon(app, vm, drag, dockKeys, onLaunch, close, onDrop)
+                itemsIndexed(filtered, key = { _, app -> app.key }) { i, app ->
+                    Box(Modifier.entrance(i, openedAt)) {
+                        if (minimal) MinimalAppRow(app, vm, dockKeys, onLaunch, fontSize = 22.sp)
+                        else DrawerAppIcon(app, vm, drag, dockKeys, onLaunch, close, onDrop)
+                    }
                 }
                 if (query.isNotBlank()) {
                     if (contactHits.isNotEmpty()) {
@@ -1387,7 +1417,7 @@ private fun WorkAppsPicker(
         Modifier
             .fillMaxSize()
             .swallowTouches()
-            .background(Color(0xFA0D1016))
+            .background(LocalThemeSurface.current.copy(alpha = 0.98f))
             .statusBarsPadding()
             .imePadding(),
     ) {
@@ -1734,3 +1764,27 @@ private fun Modifier.glass(shape: androidx.compose.ui.graphics.Shape, highlight:
         brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0.06f))),
         shape = shape,
     )
+
+
+/**
+ * Ripple-in for drawer items: each one fades up and settles a few milliseconds after the one
+ * before it, but only right after the drawer opens (items scrolled into view later just appear).
+ */
+@Composable
+private fun Modifier.entrance(index: Int, openedAt: Long): Modifier {
+    val fresh = remember { System.currentTimeMillis() - openedAt < 350 }
+    if (!fresh) return this
+    val progress = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(minOf(index, 25) * 12L)
+        progress.animateTo(1f, spring(dampingRatio = 0.82f, stiffness = 320f))
+    }
+    return this.graphicsLayer {
+        val p = progress.value
+        alpha = p.coerceIn(0f, 1f)
+        translationY = (1f - p) * 22.dp.toPx()
+        val s = 0.94f + 0.06f * p
+        scaleX = s
+        scaleY = s
+    }
+}

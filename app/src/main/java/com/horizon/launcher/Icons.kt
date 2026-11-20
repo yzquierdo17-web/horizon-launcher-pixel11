@@ -224,7 +224,7 @@ private fun NotificationDot(count: Int, showCount: Boolean, modifier: Modifier) 
                 .widthIn(min = 18.dp)
                 .clip(CircleShape)
                 .background(fill)
-                .border(1.5.dp, Color(0xFF0D1016), CircleShape)
+                .border(1.5.dp, LocalThemeSurface.current, CircleShape)
                 .padding(horizontal = 4.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -237,7 +237,7 @@ private fun NotificationDot(count: Int, showCount: Boolean, modifier: Modifier) 
                 .size(12.dp)
                 .clip(CircleShape)
                 .background(fill)
-                .border(1.5.dp, Color(0xFF0D1016), CircleShape),
+                .border(1.5.dp, LocalThemeSurface.current, CircleShape),
         )
     }
 }

@@ -75,6 +75,7 @@ class DialWallpaperService : WallpaperService() {
 
         override fun onVisibilityChanged(isVisible: Boolean) {
             visible = isVisible
+            if (isVisible) renderer.reloadTheme(this@DialWallpaperService)
             handler.removeCallbacks(frame)
             if (isVisible) handler.post(frame)
         }
@@ -133,7 +134,10 @@ class DialRenderer(context: Context) {
     private fun sp(v: Float) = v * density * fontScale
 
     var battery = -1
-    var background = 0xFF232427.toInt()
+    var background = HorizonLook.saved(context).dial
+
+    /** Re-read the chosen look (it may have changed in Settings). */
+    fun reloadTheme(context: Context) { background = HorizonLook.saved(context).dial }
 
     // Inter, matching the Home screen dial (falls back to the phone's font).
     private val inter: Typeface? = runCatching { androidx.core.content.res.ResourcesCompat.getFont(context, R.font.inter) }.getOrNull()

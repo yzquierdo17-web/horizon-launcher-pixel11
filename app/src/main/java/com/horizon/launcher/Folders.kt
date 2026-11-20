@@ -52,7 +52,7 @@ fun FolderOverlay(
                 .padding(horizontal = 24.dp)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(30.dp))
-                .background(Color(0xF51B1E26))
+                .background(androidx.compose.ui.graphics.lerp(LocalThemeSurface.current, Color.White, 0.06f).copy(alpha = 0.96f))
                 .pointerInput(Unit) { detectTapGestures { } }
                 .padding(horizontal = 12.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

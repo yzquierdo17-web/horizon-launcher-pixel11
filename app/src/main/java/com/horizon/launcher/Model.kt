@@ -200,6 +200,10 @@ data class LauncherSettings(
     val contactsPromptDone: Boolean = false,
     /** "inter" or "system". */
     val appFont: String = "inter",
+    /** HorizonLook id: wallpaper, graphite, midnight or amoled. */
+    val theme: String = "wallpaper",
+    /** Wallpaper glides sideways as you swipe Home pages. */
+    val parallax: Boolean = true,
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -243,6 +247,8 @@ data class LauncherSettings(
         .put("weatherPrompt", weatherPromptDone)
         .put("contactsPrompt", contactsPromptDone)
         .put("font", appFont)
+        .put("theme", theme)
+        .put("parallax", parallax)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -285,6 +291,8 @@ data class LauncherSettings(
                 weatherPromptDone = o.optBoolean("weatherPrompt", false),
                 contactsPromptDone = o.optBoolean("contactsPrompt", false),
                 appFont = o.optString("font", "inter"),
+                theme = o.optString("theme", "wallpaper"),
+                parallax = o.optBoolean("parallax", true),
             )
         }
     }

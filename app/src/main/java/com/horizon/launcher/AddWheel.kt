@@ -442,7 +442,7 @@ private fun OverlayColumn(content: @Composable androidx.compose.foundation.layou
         Modifier
             .fillMaxSize()
             .swallowTouches()
-            .background(Color(0xFA0D1016))
+            .background(LocalThemeSurface.current.copy(alpha = 0.98f))
             .statusBarsPadding()
             .imePadding(),
         content = content,
