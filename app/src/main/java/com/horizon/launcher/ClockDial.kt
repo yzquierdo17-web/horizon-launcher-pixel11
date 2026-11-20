@@ -36,6 +36,21 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 
+/** Looks for the dial clock (Home and lock screen). */
+enum class DialVariant(val id: String, val label: String) {
+    Classic("dial", "Dial"),
+    Minimal("dial_min", "Dial · Minimal"),
+    Bold("dial_bold", "Dial · Bold"),
+    Outline("dial_outline", "Dial · Outline");
+
+    /** Tick marks around the scales (Minimal has none). */
+    val ticks get() = this != Minimal
+
+    companion object {
+        fun of(id: String) = entries.firstOrNull { it.id == id }
+    }
+}
+
 /**
  * Rotating dial clock (watch-bezel style): a big hour on the left, an inner minute scale and an
  * outer seconds scale that turn so the current minute and second sit inside a pill on the right,
@@ -47,6 +62,7 @@ import kotlin.math.sin
 fun DialClock(
     is24h: Boolean,
     weather: String? = null,
+    variant: DialVariant = DialVariant.Classic,
     onOpenClock: () -> Unit,
     onOpenCalendar: () -> Unit,
     modifier: Modifier = Modifier,
@@ -64,6 +80,9 @@ fun DialClock(
 
     val measurer = rememberTextMeasurer()
     val font = LocalAppFont.current
+    val accent = androidx.compose.material3.MaterialTheme.colorScheme.primary
+    val onAccent = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
+    val tickScale = if (variant.ticks) 1f else 0f
     val shadow = Shadow(Color.Black.copy(alpha = 0.35f), Offset(0f, 1f), 6f)
     val minuteStyle = TextStyle(fontFamily = font, color = Color.White, fontSize = 15.sp, shadow = shadow)
     val secondStyle = TextStyle(fontFamily = font, color = Color.White, fontSize = 12.sp, shadow = shadow)
@@ -94,26 +113,39 @@ fun DialClock(
         val rSec = 126.dp.toPx()
         val c = Offset(28.dp.toPx(), size.height / 2f)
 
-        drawScale(minuteLabels, c, rMin, min, tickOffset = 14.dp.toPx(), majorTick = 6.dp.toPx(), minorTick = 3.dp.toPx(), tickAlpha = 0.35f)
-        drawScale(secondLabels, c, rSec, sec, tickOffset = 13.dp.toPx(), majorTick = 9.dp.toPx(), minorTick = 5.dp.toPx(), tickAlpha = 0.6f)
+        drawScale(minuteLabels, c, rMin, min, tickOffset = 14.dp.toPx(), majorTick = 6.dp.toPx(), minorTick = 3.dp.toPx(), tickAlpha = 0.35f * tickScale)
+        drawScale(secondLabels, c, rSec, sec, tickOffset = 13.dp.toPx(), majorTick = 9.dp.toPx(), minorTick = 5.dp.toPx(), tickAlpha = 0.6f * tickScale)
 
         // Pill around the current minute and second.
         val pillH = 34.dp.toPx()
         val pillLeft = c.x + rMin - 19.dp.toPx()
         val pillRight = c.x + rSec + 17.dp.toPx()
+        val filledPill = variant == DialVariant.Bold
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.92f),
+            color = if (filledPill) accent else Color.White.copy(alpha = 0.92f),
             topLeft = Offset(pillLeft, c.y - pillH / 2f),
             size = Size(pillRight - pillLeft, pillH),
             cornerRadius = CornerRadius(pillH / 2f),
-            style = Stroke(width = 1.5.dp.toPx()),
+            style = if (filledPill) androidx.compose.ui.graphics.drawscope.Fill
+            else Stroke(width = (if (variant == DialVariant.Minimal) 1f else 1.5f).dp.toPx()),
         )
-        drawCentered(measurer.measure(time.minute.pad(), TextStyle(fontFamily = font, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium, shadow = shadow)), Offset(c.x + rMin, c.y))
-        drawCentered(measurer.measure(time.second.pad(), TextStyle(fontFamily = font, color = Color.White, fontSize = 13.sp, shadow = shadow)), Offset(c.x + rSec, c.y))
+        val pillInk = if (filledPill) onAccent else Color.White
+        val pillShadow = if (filledPill) null else shadow
+        drawCentered(measurer.measure(time.minute.pad(), TextStyle(fontFamily = font, color = pillInk, fontSize = 20.sp, fontWeight = if (filledPill) FontWeight.Bold else FontWeight.Medium, shadow = pillShadow)), Offset(c.x + rMin, c.y))
+        drawCentered(measurer.measure(time.second.pad(), TextStyle(fontFamily = font, color = pillInk, fontSize = 13.sp, shadow = pillShadow)), Offset(c.x + rSec, c.y))
 
         // Big hour, right-aligned against the pill.
         val hour = if (is24h) time.hour else (time.hour % 12).let { if (it == 0) 12 else it }
-        val hourText = measurer.measure(hour.pad(), TextStyle(fontFamily = font, color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light, letterSpacing = (-2).sp, shadow = shadow))
+        val hourStyle = when (variant) {
+            DialVariant.Classic -> TextStyle(fontFamily = font, color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light, letterSpacing = (-2).sp, shadow = shadow)
+            DialVariant.Minimal -> TextStyle(fontFamily = font, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-2).sp, shadow = shadow)
+            DialVariant.Bold -> TextStyle(fontFamily = font, color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-3).sp, shadow = shadow)
+            DialVariant.Outline -> TextStyle(
+                fontFamily = font, color = Color.White, fontSize = 66.sp, fontWeight = FontWeight.Bold, letterSpacing = (-2).sp,
+                drawStyle = Stroke(width = 1.4.dp.toPx()),
+            )
+        }
+        val hourText = measurer.measure(hour.pad(), hourStyle)
         drawText(hourText, topLeft = Offset(pillLeft - 10.dp.toPx() - hourText.size.width, c.y - hourText.size.height / 2f))
 
         // Date in small spaced capitals.

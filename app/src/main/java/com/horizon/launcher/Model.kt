@@ -204,6 +204,10 @@ data class LauncherSettings(
     val theme: String = "wallpaper",
     /** Wallpaper glides sideways as you swipe Home pages. */
     val parallax: Boolean = true,
+    /** ClockFace id (large, compact, dial, dial_min, dial_bold, dial_outline, stacked, words). */
+    val clockFace: String = "large",
+    /** App label size: "small", "medium" or "large". */
+    val labelSize: String = "medium",
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -249,6 +253,8 @@ data class LauncherSettings(
         .put("font", appFont)
         .put("theme", theme)
         .put("parallax", parallax)
+        .put("clockFace", clockFace)
+        .put("labelSize", labelSize)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -293,6 +299,16 @@ data class LauncherSettings(
                 appFont = o.optString("font", "inter"),
                 theme = o.optString("theme", "wallpaper"),
                 parallax = o.optBoolean("parallax", true),
+                // Older settings only had the Large / Compact / Dial switches.
+                clockFace = o.optString(
+                    "clockFace",
+                    when {
+                        o.optBoolean("dialClock", false) -> "dial"
+                        o.optBoolean("compact", false) -> "compact"
+                        else -> "large"
+                    },
+                ),
+                labelSize = o.optString("labelSize", "medium"),
             )
         }
     }

@@ -105,7 +105,7 @@ fun WidgetTile(
                             Modifier
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(Color.White.copy(alpha = 0.22f)),
+                                .background(LocalInk.current.copy(alpha = 0.22f)),
                         )
                     }
                 },
@@ -118,10 +118,10 @@ fun WidgetTile(
                 Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White.copy(alpha = 0.1f)),
+                    .background(LocalInk.current.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("Widget unavailable", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                Text("Widget unavailable", color = LocalInk.current.copy(alpha = 0.7f), fontSize = 12.sp)
             }
         } else {
             BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp))) {
@@ -199,20 +199,20 @@ fun WidgetPicker(
         ) {
             Text(
                 "Widgets",
-                color = Color.White,
+                color = LocalInk.current,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = onClose) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = LocalInk.current)
             }
         }
 
         if (groups.isEmpty()) {
             Text(
                 "No widgets found",
-                color = Color.White.copy(alpha = 0.7f),
+                color = LocalInk.current.copy(alpha = 0.7f),
                 modifier = Modifier.padding(20.dp),
             )
         }
@@ -226,7 +226,7 @@ fun WidgetPicker(
                 item(key = "h-$appLabel") {
                     Text(
                         appLabel,
-                        color = Color.White.copy(alpha = 0.75f),
+                        color = LocalInk.current.copy(alpha = 0.75f),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp, start = 4.dp),
@@ -261,7 +261,7 @@ private fun WidgetRow(vm: LauncherViewModel, info: AppWidgetProviderInfo, onClic
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = 0.07f))
+            .background(LocalInk.current.copy(alpha = 0.07f))
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -270,7 +270,7 @@ private fun WidgetRow(vm: LauncherViewModel, info: AppWidgetProviderInfo, onClic
             Modifier
                 .size(96.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = 0.06f)),
+                .background(LocalInk.current.copy(alpha = 0.06f)),
             contentAlignment = Alignment.Center,
         ) {
             preview?.let {
@@ -279,9 +279,9 @@ private fun WidgetRow(vm: LauncherViewModel, info: AppWidgetProviderInfo, onClic
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = 16.sp, maxLines = 2)
+            Text(label, color = LocalInk.current, fontSize = 16.sp, maxLines = 2)
             Spacer(Modifier.height(2.dp))
-            Text("$sx × $sy", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+            Text("$sx × $sy", color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
         }
     }
 }

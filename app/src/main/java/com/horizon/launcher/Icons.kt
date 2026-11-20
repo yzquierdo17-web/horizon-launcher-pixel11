@@ -149,9 +149,13 @@ fun LauncherIcon(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = label,
-                    color = Color.White,
+                    color = LocalInk.current,
                     style = TextStyle(fontFamily = LocalAppFont.current, 
-                        fontSize = 12.sp,
+                        fontSize = when (LocalSettings.current.labelSize) {
+                            "small" -> 11.sp
+                            "large" -> 14.sp
+                            else -> 12.5.sp
+                        },
                         shadow = if (labelShadow) LabelShadow else null,
                     ),
                     maxLines = 1,

@@ -52,7 +52,7 @@ fun FolderOverlay(
                 .padding(horizontal = 24.dp)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(30.dp))
-                .background(androidx.compose.ui.graphics.lerp(LocalThemeSurface.current, Color.White, 0.06f).copy(alpha = 0.96f))
+                .background(androidx.compose.ui.graphics.lerp(LocalThemeSurface.current, LocalInk.current, 0.06f).copy(alpha = 0.96f))
                 .pointerInput(Unit) { detectTapGestures { } }
                 .padding(horizontal = 12.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -62,12 +62,12 @@ fun FolderOverlay(
                 onValueChange = { vm.renameFolder(folder.id, it) },
                 singleLine = true,
                 textStyle = TextStyle(fontFamily = LocalAppFont.current, 
-                    color = Color.White,
+                    color = LocalInk.current,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,
                 ),
-                cursorBrush = SolidColor(Color.White),
+                cursorBrush = SolidColor(LocalInk.current),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
             Spacer(Modifier.height(14.dp))

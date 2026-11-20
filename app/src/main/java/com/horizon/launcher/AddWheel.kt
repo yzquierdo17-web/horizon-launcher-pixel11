@@ -158,9 +158,9 @@ fun AddWheel(vm: LauncherViewModel, onDismiss: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(WheelOptions[selected].title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+            Text(WheelOptions[selected].title, color = LocalInk.current, fontSize = 20.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(6.dp))
-            Text("Spin the wheel, then tap the middle", color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp)
+            Text("Spin the wheel, then tap the middle", color = LocalInk.current.copy(alpha = 0.65f), fontSize = 13.sp)
             Spacer(Modifier.height(20.dp))
             // Pointer showing which item is selected
             Box(
@@ -176,8 +176,8 @@ fun AddWheel(vm: LauncherViewModel, onDismiss: () -> Unit) {
                     .size(300.dp)
                     .graphicsLayer { scaleX = scale; scaleY = scale; alpha = appear }
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.10f))
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                    .background(LocalInk.current.copy(alpha = 0.10f))
+                    .border(1.dp, LocalInk.current.copy(alpha = 0.18f), CircleShape)
                     .pointerInput(Unit) {
                         val center = Offset(size.width / 2f, size.height / 2f)
                         fun angleOf(p: Offset) = Math.toDegrees(atan2((p.y - center.y).toDouble(), (p.x - center.x).toDouble())).toFloat()
@@ -242,17 +242,17 @@ fun AddWheel(vm: LauncherViewModel, onDismiss: () -> Unit) {
                             }
                             .size(68.dp)
                             .clip(CircleShape)
-                            .background(lerpColor(Color.White.copy(alpha = 0.14f), MaterialTheme.colorScheme.primaryContainer, bg)),
+                            .background(lerpColor(LocalInk.current.copy(alpha = 0.14f), MaterialTheme.colorScheme.primaryContainer, bg)),
                     ) {
                         Icon(
                             opt.icon,
                             contentDescription = opt.label,
-                            tint = lerpColor(Color.White, MaterialTheme.colorScheme.onPrimaryContainer, bg),
+                            tint = lerpColor(LocalInk.current, MaterialTheme.colorScheme.onPrimaryContainer, bg),
                             modifier = Modifier.size(28.dp),
                         )
                         Text(
                             opt.label,
-                            color = lerpColor(Color.White.copy(alpha = 0.85f), MaterialTheme.colorScheme.onPrimaryContainer, bg),
+                            color = lerpColor(LocalInk.current.copy(alpha = 0.85f), MaterialTheme.colorScheme.onPrimaryContainer, bg),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
                         )
@@ -318,7 +318,7 @@ fun AddAppScreen(vm: LauncherViewModel, apps: List<AppEntry>, onDone: () -> Unit
                 ) {
                     AppImage(app, 40.dp)
                     Spacer(Modifier.width(14.dp))
-                    Text(app.label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text(app.label, color = LocalInk.current, fontSize = 15.sp, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -332,7 +332,7 @@ fun IconStyleScreen(vm: LauncherViewModel, apps: List<AppEntry>, onDone: () -> U
     val packs by produceState<List<IconPackInfo>?>(null) { value = withContext(Dispatchers.IO) { vm.iconPacks() } }
     val sample = remember(apps) { apps.take(5) }
     val previewPx = with(LocalDensity.current) { 44.dp.roundToPx() }
-    val shapeColor = Color.White.copy(alpha = 0.9f).toArgb()
+    val shapeColor = LocalInk.current.copy(alpha = 0.9f).toArgb()
 
     OverlayColumn {
         OverlayHeader("Icon style", "Changes apply to every app", onDone)
@@ -342,7 +342,7 @@ fun IconStyleScreen(vm: LauncherViewModel, apps: List<AppEntry>, onDone: () -> U
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.White.copy(alpha = 0.06f))
+                .background(LocalInk.current.copy(alpha = 0.06f))
                 .padding(vertical = 16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
@@ -360,7 +360,7 @@ fun IconStyleScreen(vm: LauncherViewModel, apps: List<AppEntry>, onDone: () -> U
                             modifier = Modifier
                                 .width(92.dp)
                                 .clip(RoundedCornerShape(20.dp))
-                                .background(if (on) MaterialTheme.colorScheme.primaryContainer else Color.White.copy(alpha = 0.06f))
+                                .background(if (on) MaterialTheme.colorScheme.primaryContainer else LocalInk.current.copy(alpha = 0.06f))
                                 .clickable { vm.updateSettings { it.copy(iconShape = shape.id) } }
                                 .padding(vertical = 14.dp),
                         ) {
@@ -368,7 +368,7 @@ fun IconStyleScreen(vm: LauncherViewModel, apps: List<AppEntry>, onDone: () -> U
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 shape.label,
-                                color = if (on) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                color = if (on) MaterialTheme.colorScheme.onPrimaryContainer else LocalInk.current,
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center,
                             )
@@ -413,8 +413,8 @@ private fun PackRow(title: String, subtitle: String, selected: Boolean, onClick:
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 16.sp)
-            Text(subtitle, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+            Text(title, color = LocalInk.current, fontSize = 16.sp)
+            Text(subtitle, color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
         }
         if (selected) Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
     }
@@ -433,7 +433,7 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun Hint(text: String) {
-    Text(text, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+    Text(text, color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
 }
 
 @Composable
@@ -456,8 +456,8 @@ private fun OverlayHeader(title: String, subtitle: String, onDone: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium)
-            Text(subtitle, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+            Text(title, color = LocalInk.current, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+            Text(subtitle, color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
         }
         Text(
             "Done",
@@ -483,12 +483,12 @@ private fun SearchBox(query: String, onChange: (String) -> Unit) {
         singleLine = true,
         shape = CircleShape,
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = Color.White.copy(alpha = 0.10f),
-            unfocusedContainerColor = Color.White.copy(alpha = 0.10f),
+            focusedContainerColor = LocalInk.current.copy(alpha = 0.10f),
+            unfocusedContainerColor = LocalInk.current.copy(alpha = 0.10f),
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White,
+            focusedTextColor = LocalInk.current,
+            unfocusedTextColor = LocalInk.current,
         ),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
     )
@@ -518,7 +518,7 @@ fun HiddenAppsScreen(vm: LauncherViewModel, hidden: List<AppEntry>, onDone: () -
                 ) {
                     AppImage(app, 40.dp)
                     Spacer(Modifier.width(14.dp))
-                    Text(app.label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text(app.label, color = LocalInk.current, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     Text(
                         "Unhide",
                         color = MaterialTheme.colorScheme.primary,
@@ -566,7 +566,7 @@ fun AppChecklistScreen(
                 ) {
                     AppImage(app, 40.dp)
                     Spacer(Modifier.width(14.dp))
-                    Text(app.label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text(app.label, color = LocalInk.current, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     androidx.compose.material3.Checkbox(checked = on, onCheckedChange = { onToggle(app, it) })
                 }
             }

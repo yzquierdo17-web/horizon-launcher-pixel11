@@ -20,11 +20,18 @@ enum class HorizonLook(
     val surface: Color,
     /** Lock-screen dial background. */
     val dial: Int,
+    /** Text and icon colour on [surface]. */
+    val ink: Color = Color.White,
+    val isLight: Boolean = false,
 ) {
     Wallpaper("wallpaper", "Wallpaper", Color(0xFF0D1016), 0xFF232427.toInt()),
     Graphite("graphite", "Graphite", Color(0xFF17191C), 0xFF1D1F22.toInt()),
     Midnight("midnight", "Midnight", Color(0xFF0A1022), 0xFF0B1427.toInt()),
-    Amoled("amoled", "AMOLED", Color(0xFF000000), 0xFF000000.toInt());
+    Forest("forest", "Forest", Color(0xFF0D1712), 0xFF101C16.toInt()),
+    Plum("plum", "Plum", Color(0xFF170F1B), 0xFF1B1220.toInt()),
+    Amoled("amoled", "AMOLED", Color(0xFF000000), 0xFF000000.toInt()),
+    /** Light drawer, folders and settings. Home stays white text on your wallpaper. */
+    Paper("paper", "Paper", Color(0xFFF4F1EA), 0xFF232427.toInt(), ink = Color(0xFF1D1C1A), isLight = true);
 
     companion object {
         fun of(id: String) = entries.firstOrNull { it.id == id } ?: Wallpaper
@@ -39,6 +46,22 @@ enum class HorizonLook(
 
 /** Base surface for full-screen pages and panels in the current look. */
 val LocalThemeSurface = staticCompositionLocalOf { HorizonLook.Wallpaper.surface }
+
+/** Text colour for whatever is being drawn: white on the wallpaper, the look's ink on panels. */
+val LocalInk = staticCompositionLocalOf { Color.White }
+
+/** The current look's ink, applied by panels (drawer, folders, settings, full-screen pages). */
+val LocalSurfaceInk = staticCompositionLocalOf { Color.White }
+
+/** Wrap a panel's content so its text and icons use the look's ink. */
+@androidx.compose.runtime.Composable
+fun OnSurface(content: @androidx.compose.runtime.Composable () -> Unit) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalInk provides LocalSurfaceInk.current,
+        androidx.compose.material3.LocalContentColor provides LocalSurfaceInk.current,
+        content = content,
+    )
+}
 
 /** Colours for a look. Wallpaper and AMOLED keep your wallpaper's accent (Material You). */
 fun colorSchemeFor(look: HorizonLook, context: Context, fallback: ColorScheme): ColorScheme {
@@ -73,6 +96,62 @@ fun colorSchemeFor(look: HorizonLook, context: Context, fallback: ColorScheme): 
             surfaceContainer = Color(0xFF202327),
             surfaceContainerHigh = Color(0xFF292C30),
             surfaceContainerHighest = Color(0xFF33363B),
+        )
+        HorizonLook.Forest -> darkColorScheme(
+            primary = Color(0xFFA3D9AE),
+            onPrimary = Color(0xFF0B2A15),
+            primaryContainer = Color(0xFF1F4A2C),
+            onPrimaryContainer = Color(0xFFD3F2D9),
+            secondary = Color(0xFFB8CDB9),
+            onSecondary = Color(0xFF16261A),
+            secondaryContainer = Color(0xFF2A3D2E),
+            onSecondaryContainer = Color(0xFFD9EADB),
+            tertiary = Color(0xFFE2C78F),
+            background = Color(0xFF0D1712),
+            surface = Color(0xFF0D1712),
+            surfaceVariant = Color(0xFF22322A),
+            onSurfaceVariant = Color(0xFFC0CDC3),
+            outline = Color(0xFF889A8D),
+            surfaceContainer = Color(0xFF13201A),
+            surfaceContainerHigh = Color(0xFF1A2921),
+            surfaceContainerHighest = Color(0xFF223229),
+        )
+        HorizonLook.Plum -> darkColorScheme(
+            primary = Color(0xFFE6B8F2),
+            onPrimary = Color(0xFF341341),
+            primaryContainer = Color(0xFF52295F),
+            onPrimaryContainer = Color(0xFFF7DAFF),
+            secondary = Color(0xFFD5BFDA),
+            onSecondary = Color(0xFF2A1A2F),
+            secondaryContainer = Color(0xFF3F2D45),
+            onSecondaryContainer = Color(0xFFF1DCF5),
+            tertiary = Color(0xFFF2B8BE),
+            background = Color(0xFF170F1B),
+            surface = Color(0xFF170F1B),
+            surfaceVariant = Color(0xFF2E2333),
+            onSurfaceVariant = Color(0xFFD2C3D6),
+            outline = Color(0xFF9B8C9F),
+            surfaceContainer = Color(0xFF1F1624),
+            surfaceContainerHigh = Color(0xFF281D2E),
+            surfaceContainerHighest = Color(0xFF312537),
+        )
+        HorizonLook.Paper -> androidx.compose.material3.lightColorScheme(
+            primary = Color(0xFF6B4E2E),
+            onPrimary = Color(0xFFFFFFFF),
+            primaryContainer = Color(0xFFF0DCC2),
+            onPrimaryContainer = Color(0xFF2A1A08),
+            secondary = Color(0xFF6F6253),
+            secondaryContainer = Color(0xFFE8DFD3),
+            onSecondaryContainer = Color(0xFF241D15),
+            background = Color(0xFFF4F1EA),
+            surface = Color(0xFFF4F1EA),
+            onSurface = Color(0xFF1D1C1A),
+            surfaceVariant = Color(0xFFE6E1D8),
+            onSurfaceVariant = Color(0xFF4B4740),
+            outline = Color(0xFF7D786F),
+            surfaceContainer = Color(0xFFEEEAE2),
+            surfaceContainerHigh = Color(0xFFE8E4DB),
+            surfaceContainerHighest = Color(0xFFE2DDD4),
         )
         HorizonLook.Midnight -> darkColorScheme(
             primary = Color(0xFFA4C6FF),

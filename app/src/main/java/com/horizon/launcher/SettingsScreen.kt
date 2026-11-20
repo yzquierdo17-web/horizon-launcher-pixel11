@@ -86,9 +86,9 @@ fun SettingsScreen(
                 .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Horizon settings", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text("Horizon settings", color = LocalInk.current, fontSize = 24.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             IconButton(onClick = onClose) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = LocalInk.current)
             }
         }
 
@@ -112,6 +112,14 @@ fun SettingsScreen(
                     "Moves your wallpaper as you swipe Home pages. Shows with wide or live wallpapers",
                     s.parallax,
                 ) { v -> vm.updateSettings { it.copy(parallax = v) } }
+            }
+            item {
+                ChoiceRow(
+                    title = "Label size",
+                    options = listOf("Small" to "small", "Medium" to "medium", "Large" to "large"),
+                    selected = s.labelSize,
+                    accent = accent,
+                ) { v -> vm.updateSettings { it.copy(labelSize = v) } }
             }
             item {
                 ChoiceRow(
@@ -146,16 +154,9 @@ fun SettingsScreen(
                 }
             }
             item {
-                ChoiceRow(
-                    title = "Clock",
-                    options = listOf("Large" to "large", "Compact" to "compact", "Dial" to "dial"),
-                    selected = when {
-                        s.dialClock -> "dial"
-                        s.compactClock -> "compact"
-                        else -> "large"
-                    },
-                    accent = accent,
-                ) { v -> vm.updateSettings { it.copy(dialClock = v == "dial", compactClock = v == "compact") } }
+                ActionRow("Clock face", ClockFace.of(s.clockFace).label) {
+                    vm.showOverlay(LauncherViewModel.Overlay.ClockFaces)
+                }
             }
             item {
                 ToggleRow(
@@ -387,8 +388,8 @@ fun SettingsScreen(
                             vm.updateSettings { it.copy(weatherCity = city.trim()) }
                         }),
                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
+                            focusedTextColor = LocalInk.current,
+                            unfocusedTextColor = LocalInk.current,
                         ),
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                     )
@@ -437,13 +438,13 @@ fun SettingsScreen(
                                     .weight(1f)
                                     .height(40.dp)
                                     .clip(CircleShape)
-                                    .background(if (on) accent else Color.White.copy(alpha = 0.08f))
+                                    .background(if (on) accent else LocalInk.current.copy(alpha = 0.08f))
                                     .clickable {
                                         vm.updateSettings { st -> st.copy(workDays = if (on) st.workDays - day else st.workDays + day) }
                                     },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(names[day - 1], color = if (on) MaterialTheme.colorScheme.onPrimary else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text(names[day - 1], color = if (on) MaterialTheme.colorScheme.onPrimary else LocalInk.current, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -496,7 +497,7 @@ fun SettingsScreen(
             item {
                 Text(
                     "Hidden apps don't show in the app drawer or search.",
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = LocalInk.current.copy(alpha = 0.6f),
                     fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 )
@@ -528,7 +529,7 @@ fun SettingsScreen(
                 ) {
                     AppImage(app, 36.dp)
                     Spacer(Modifier.width(14.dp))
-                    Text(app.label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text(app.label, color = LocalInk.current, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     Checkbox(checked = hidden, onCheckedChange = null)
                 }
             }
@@ -536,7 +537,7 @@ fun SettingsScreen(
             item {
                 Text(
                     "Horizon ${BuildConfigVersion.NAME}",
-                    color = Color.White.copy(alpha = 0.4f),
+                    color = LocalInk.current.copy(alpha = 0.4f),
                     fontSize = 12.sp,
                     modifier = Modifier.padding(top = 24.dp, start = 8.dp),
                 )
@@ -546,7 +547,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.15"
+    const val NAME = "0.16"
 }
 
 @Composable
@@ -571,10 +572,10 @@ private fun ToggleRow(title: String, subtitle: String?, checked: Boolean, onChan
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 16.sp)
+            Text(title, color = LocalInk.current, fontSize = 16.sp)
             if (subtitle != null) {
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+                Text(subtitle, color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
             }
         }
         Spacer(Modifier.width(12.dp))
@@ -591,9 +592,9 @@ private fun ActionRow(title: String, subtitle: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 10.dp),
     ) {
-        Text(title, color = Color.White, fontSize = 16.sp)
+        Text(title, color = LocalInk.current, fontSize = 16.sp)
         Spacer(Modifier.height(2.dp))
-        Text(subtitle, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+        Text(subtitle, color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
     }
 }
 
@@ -606,20 +607,20 @@ private fun <T> ChoiceRow(
     onSelect: (T) -> Unit,
 ) {
     Column(Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
-        Text(title, color = Color.White, fontSize = 16.sp)
+        Text(title, color = LocalInk.current, fontSize = 16.sp)
         Spacer(Modifier.height(10.dp))
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.08f))
+                .background(LocalInk.current.copy(alpha = 0.08f))
                 .padding(4.dp),
         ) {
             options.forEach { (label, value) ->
                 val on = value == selected
                 Text(
                     label,
-                    color = if (on) Color.Black else Color.White,
+                    color = if (on) Color.Black else LocalInk.current,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,

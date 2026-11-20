@@ -76,7 +76,7 @@ fun MinimalHome(
         if (favorites.isEmpty()) {
             Text(
                 "Long-press here and choose Favourites to pick your apps",
-                color = Color.White.copy(alpha = 0.7f),
+                color = LocalInk.current.copy(alpha = 0.7f),
                 fontSize = 15.sp,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
@@ -89,7 +89,7 @@ fun MinimalHome(
                 .padding(vertical = 6.dp, horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("All apps", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, style = TextStyle(fontFamily = LocalAppFont.current, shadow = TextShadow))
+            Text("All apps", color = LocalInk.current.copy(alpha = 0.6f), fontSize = 15.sp, style = TextStyle(fontFamily = LocalAppFont.current, shadow = TextShadow))
         }
     }
 }
@@ -138,7 +138,7 @@ fun MinimalAppRow(
         ) {
             Text(
                 app.label,
-                color = Color.White,
+                color = LocalInk.current,
                 style = TextStyle(fontFamily = LocalAppFont.current, 
                     fontSize = fontSize,
                     fontWeight = FontWeight.Light,
@@ -150,7 +150,7 @@ fun MinimalAppRow(
             )
             if (app.isWork) {
                 Spacer(Modifier.width(8.dp))
-                Text("work", color = Color.White.copy(alpha = 0.45f), fontSize = 12.sp)
+                Text("work", color = LocalInk.current.copy(alpha = 0.45f), fontSize = 12.sp)
             }
             if (unread) {
                 Spacer(Modifier.width(8.dp))
@@ -241,19 +241,19 @@ fun ResultRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(36.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.10f)),
+            Modifier.size(36.dp).clip(CircleShape).background(LocalInk.current.copy(alpha = 0.10f)),
             contentAlignment = Alignment.Center,
-        ) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp)) }
+        ) { Icon(icon, null, tint = LocalInk.current, modifier = Modifier.size(20.dp)) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null) Text(subtitle, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
+            Text(title, color = LocalInk.current, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) Text(subtitle, color = LocalInk.current.copy(alpha = 0.55f), fontSize = 12.sp)
         }
         if (onDismiss != null) {
             Icon(
                 Icons.Filled.Close,
                 "Not now",
-                tint = Color.White.copy(alpha = 0.6f),
+                tint = LocalInk.current.copy(alpha = 0.6f),
                 modifier = Modifier.clip(CircleShape).clickable(onClick = onDismiss).padding(8.dp).size(18.dp),
             )
         }
@@ -285,8 +285,8 @@ fun ContactRow(c: ContactHit) {
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(c.name, color = Color.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (c.number != null) Text(c.number, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
+            Text(c.name, color = LocalInk.current, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (c.number != null) Text(c.number, color = LocalInk.current.copy(alpha = 0.55f), fontSize = 12.sp)
         }
         if (c.number != null) {
             RoundAction(Icons.Outlined.Message, "Text") {
@@ -306,9 +306,9 @@ private fun RoundAction(icon: ImageVector, label: String, onClick: () -> Unit) {
         Modifier
             .size(38.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.10f))
+            .background(LocalInk.current.copy(alpha = 0.10f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, label, tint = Color.White, modifier = Modifier.size(19.dp)) }
+    ) { Icon(icon, label, tint = LocalInk.current, modifier = Modifier.size(19.dp)) }
 }
 

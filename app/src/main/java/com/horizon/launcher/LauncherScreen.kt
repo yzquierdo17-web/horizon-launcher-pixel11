@@ -171,6 +171,7 @@ fun LauncherScreen(
         LocalFocusKeys provides focusKeys,
         LocalAppFont provides font,
         LocalThemeSurface provides look.surface,
+        LocalSurfaceInk provides look.ink,
     ) {
         MaterialTheme(colorScheme = colors, typography = typographyFor(font)) {
             LauncherContent(vm, settings, onAddWidget, onBlur, onBackup, onRestore)
@@ -201,6 +202,16 @@ private fun LauncherContent(
 
     val drag = remember { DragController() }
     val view = LocalView.current
+
+    // Light panels (Paper theme) need dark status-bar icons; everything else keeps white ones.
+    val lightPanel = HorizonLook.of(settings.theme).isLight &&
+        (drawerOpen || settingsOpen || openFolderId != null || pickerOpen ||
+            (overlay != null && overlay != LauncherViewModel.Overlay.Wheel))
+    SideEffect {
+        (view.context as? android.app.Activity)?.window?.let { w ->
+            androidx.core.view.WindowCompat.getInsetsController(w, view).isAppearanceLightStatusBars = lightPanel
+        }
+    }
     val scope = rememberCoroutineScope()
     val visibleApps = remember(apps, settings.hidden) { apps.filter { it.key !in settings.hidden } }
 
@@ -374,83 +385,104 @@ private fun LauncherContent(
         )
 
         if (progress > 0.001f || drag.payload is DragPayload.FromDrawer) {
-            AppDrawer(
-                apps = visibleApps,
-                vm = vm,
-                drag = drag,
-                autoFocus = searchFocus,
-                onLaunch = launch,
-                onDrop = finishDrag,
-                blurOn = settings.wallpaperBlur,
-                modifier = Modifier.graphicsLayer {
-                    translationY = (1f - progress) * size.height * 0.4f
-                    alpha = (progress * 1.6f).coerceAtMost(1f)
-                },
-            )
+            OnSurface {
+                AppDrawer(
+                    apps = visibleApps,
+                    vm = vm,
+                    drag = drag,
+                    autoFocus = searchFocus,
+                    onLaunch = launch,
+                    onDrop = finishDrag,
+                    blurOn = settings.wallpaperBlur,
+                    modifier = Modifier.graphicsLayer {
+                        translationY = (1f - progress) * size.height * 0.4f
+                        alpha = (progress * 1.6f).coerceAtMost(1f)
+                    },
+                )
+            }
         }
 
         val folderId = openFolderId ?: (drag.payload as? DragPayload.FromFolder)?.folderId
         val folder = folderId?.let { id -> items.firstOrNull { it.id == id && it.type == TYPE_FOLDER } }
         if (folder != null) {
-            FolderOverlay(
-                folder = folder,
-                index = index,
-                vm = vm,
-                drag = drag,
-                onLaunch = launch,
-                onDrop = finishDrag,
-                modifier = Modifier.graphicsLayer { alpha = folderAlpha },
-            )
+            OnSurface {
+                FolderOverlay(
+                    folder = folder,
+                    index = index,
+                    vm = vm,
+                    drag = drag,
+                    onLaunch = launch,
+                    onDrop = finishDrag,
+                    modifier = Modifier.graphicsLayer { alpha = folderAlpha },
+                )
+            }
         }
 
         if (pickerOpen) {
-            WidgetPicker(
-                vm = vm,
-                apps = apps,
-                onPick = { info ->
-                    vm.showWidgetPicker(false)
-                    onAddWidget(info)
-                },
-                onClose = { vm.showWidgetPicker(false) },
-            )
+            OnSurface {
+                WidgetPicker(
+                    vm = vm,
+                    apps = apps,
+                    onPick = { info ->
+                        vm.showWidgetPicker(false)
+                        onAddWidget(info)
+                    },
+                    onClose = { vm.showWidgetPicker(false) },
+                )
+            }
         }
 
         if (settingsOpen) {
-            SettingsScreen(
-                vm = vm,
-                apps = apps,
-                onBackup = onBackup,
-                onRestore = onRestore,
-                onClose = { vm.openSettings(false) },
-            )
+            OnSurface {
+                SettingsScreen(
+                    vm = vm,
+                    apps = apps,
+                    onBackup = onBackup,
+                    onRestore = onRestore,
+                    onClose = { vm.openSettings(false) },
+                )
+            }
         }
 
         when (overlay) {
             LauncherViewModel.Overlay.Wheel -> AddWheel(vm) { vm.showOverlay(null) }
-            LauncherViewModel.Overlay.AddApp -> AddAppScreen(vm, visibleApps) { vm.showOverlay(null) }
-            LauncherViewModel.Overlay.IconStyle -> IconStyleScreen(vm, visibleApps) { vm.showOverlay(null) }
-            LauncherViewModel.Overlay.HiddenApps -> HiddenAppsScreen(vm, apps.filter { it.key in settings.hidden }) { vm.showOverlay(null) }
-            LauncherViewModel.Overlay.FocusApps -> AppChecklistScreen(
-                title = "Distracting apps",
-                subtitle = "Greyed out with no dots while Focus is on",
-                apps = visibleApps,
-                selected = settings.focusApps,
-                onToggle = { app, on ->
-                    vm.updateSettings { it.copy(focusApps = if (on) it.focusApps + app.key else it.focusApps - app.key) }
-                },
-            ) { vm.showOverlay(null) }
-            LauncherViewModel.Overlay.Favorites -> AppChecklistScreen(
-                title = "Favourites",
-                subtitle = "The apps listed on Home in minimal mode",
-                apps = visibleApps,
-                selected = settings.minimalFavorites.ifEmpty { vm.defaultFavorites() }.toSet(),
-                onToggle = { app, on ->
-                    vm.updateSettings { s ->
-                        val base = s.minimalFavorites.ifEmpty { vm.defaultFavorites() }
-                        s.copy(minimalFavorites = if (on) (base + app.key).distinct() else base - app.key)
-                    }
-                },
-            ) { vm.showOverlay(null) }
+            LauncherViewModel.Overlay.AddApp -> OnSurface {
+                AddAppScreen(vm, visibleApps) { vm.showOverlay(null) }
+            }
+            LauncherViewModel.Overlay.IconStyle -> OnSurface {
+                IconStyleScreen(vm, visibleApps) { vm.showOverlay(null) }
+            }
+            LauncherViewModel.Overlay.HiddenApps -> OnSurface {
+                HiddenAppsScreen(vm, apps.filter { it.key in settings.hidden }) { vm.showOverlay(null) }
+            }
+            LauncherViewModel.Overlay.FocusApps -> OnSurface {
+                AppChecklistScreen(
+                    title = "Distracting apps",
+                    subtitle = "Greyed out with no dots while Focus is on",
+                    apps = visibleApps,
+                    selected = settings.focusApps,
+                    onToggle = { app, on ->
+                        vm.updateSettings { it.copy(focusApps = if (on) it.focusApps + app.key else it.focusApps - app.key) }
+                    },
+                ) { vm.showOverlay(null) }
+            }
+            LauncherViewModel.Overlay.ClockFaces -> OnSurface {
+                ClockFacePicker(vm) { vm.showOverlay(null) }
+            }
+            LauncherViewModel.Overlay.Favorites -> OnSurface {
+                AppChecklistScreen(
+                    title = "Favourites",
+                    subtitle = "The apps listed on Home in minimal mode",
+                    apps = visibleApps,
+                    selected = settings.minimalFavorites.ifEmpty { vm.defaultFavorites() }.toSet(),
+                    onToggle = { app, on ->
+                        vm.updateSettings { s ->
+                            val base = s.minimalFavorites.ifEmpty { vm.defaultFavorites() }
+                            s.copy(minimalFavorites = if (on) (base + app.key).distinct() else base - app.key)
+                        }
+                    },
+                ) { vm.showOverlay(null) }
+            }
             null -> Unit
         }
 
@@ -593,7 +625,18 @@ private fun HomeScreen(
                 .navigationBarsPadding(),
         ) {
             Spacer(Modifier.height(if (settings.compactClock) 20.dp else 32.dp))
-            ClockHeader(vm = vm, compact = settings.compactClock, modifier = Modifier.padding(horizontal = 24.dp))
+            // The clock belongs to the first page: it slides away with it as you swipe to other pages.
+            ClockHeader(
+                vm = vm,
+                compact = settings.clockFace == "compact",
+                modifier = Modifier
+                    .graphicsLayer {
+                        val pos = pager.currentPage + pager.currentPageOffsetFraction
+                        translationX = -pos * size.width
+                        alpha = (1f - kotlin.math.abs(pos)).coerceIn(0f, 1f)
+                    }
+                    .padding(horizontal = 24.dp),
+            )
             Spacer(Modifier.height(12.dp))
 
             if (settings.minimalMode) {
@@ -821,9 +864,16 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
     }
 
     Column(modifier) {
-        if (settings.dialClock) {
+        val face = ClockFace.of(settings.clockFace)
+        val variant = face.dialVariant
+        if (face == ClockFace.Stacked) {
+            StackedClock(now, DateFormat.is24HourFormat(context), weatherText, openClock, openCalendar)
+        } else if (face == ClockFace.Words) {
+            WordsClock(now, weatherText, openClock, openCalendar)
+        } else if (variant != null) {
             DialClock(
                 weather = weatherText,
+                variant = variant,
                 is24h = DateFormat.is24HourFormat(context),
                 onOpenClock = openClock,
                 onOpenCalendar = openCalendar,
@@ -1192,7 +1242,7 @@ private fun AppDrawer(
                     .width(36.dp)
                     .height(4.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.35f)),
+                    .background(LocalInk.current.copy(alpha = 0.35f)),
             )
         }
 
@@ -1230,12 +1280,12 @@ private fun AppDrawer(
             singleLine = true,
             shape = CircleShape,
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.White.copy(alpha = 0.10f),
-                unfocusedContainerColor = Color.White.copy(alpha = 0.10f),
+                focusedContainerColor = LocalInk.current.copy(alpha = 0.10f),
+                unfocusedContainerColor = LocalInk.current.copy(alpha = 0.10f),
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
+                focusedTextColor = LocalInk.current,
+                unfocusedTextColor = LocalInk.current,
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = {
@@ -1264,21 +1314,21 @@ private fun AppDrawer(
                 ) {
                     Text(
                         if (filtered.isEmpty()) "No apps on Work yet" else "${filtered.size} work apps",
-                        color = Color.White.copy(alpha = 0.6f),
+                        color = LocalInk.current.copy(alpha = 0.6f),
                         fontSize = 13.sp,
                         modifier = Modifier.weight(1f),
                     )
                     Row(
                         Modifier
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.10f))
+                            .background(LocalInk.current.copy(alpha = 0.10f))
                             .clickable { choosingWorkApps = true }
                             .padding(horizontal = 14.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Outlined.Edit, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.Edit, null, tint = LocalInk.current, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Choose apps", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("Choose apps", color = LocalInk.current, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -1317,7 +1367,7 @@ private fun AppDrawer(
                                 .padding(horizontal = 12.dp, vertical = 10.dp)
                                 .fillMaxWidth()
                                 .height(1.dp)
-                                .background(Color.White.copy(alpha = 0.12f)),
+                                .background(LocalInk.current.copy(alpha = 0.12f)),
                         )
                     }
                 }
@@ -1356,7 +1406,7 @@ private fun AppDrawer(
                     item(span = { GridItemSpan(maxLineSpan) }, key = "work-empty") {
                         Text(
                             "Tap Choose apps, or long-press any app and pick Add to Work tab.",
-                            color = Color.White.copy(alpha = 0.6f),
+                            color = LocalInk.current.copy(alpha = 0.6f),
                             fontSize = 14.sp,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 24.dp),
                         )
@@ -1394,12 +1444,14 @@ private fun AppDrawer(
 
     if (choosingWorkApps) {
         BackHandler { choosingWorkApps = false }
-        WorkAppsPicker(
-            apps = apps.filter { !it.isWork },
-            selected = workKeys,
-            onToggle = { app, on -> vm.setWorkApp(app.key, on) },
-            onDone = { choosingWorkApps = false },
-        )
+        OnSurface {
+            WorkAppsPicker(
+                apps = apps.filter { !it.isWork },
+                selected = workKeys,
+                onToggle = { app, on -> vm.setWorkApp(app.key, on) },
+                onDone = { choosingWorkApps = false },
+            )
+        }
     }
 }
 
@@ -1426,8 +1478,8 @@ private fun WorkAppsPicker(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Work tab apps", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium)
-                Text("${selected.count { k -> apps.any { it.key == k } }} selected", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+                Text("Work tab apps", color = LocalInk.current, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                Text("${selected.count { k -> apps.any { it.key == k } }} selected", color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
             }
             Text(
                 "Done",
@@ -1449,12 +1501,12 @@ private fun WorkAppsPicker(
             singleLine = true,
             shape = CircleShape,
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.White.copy(alpha = 0.10f),
-                unfocusedContainerColor = Color.White.copy(alpha = 0.10f),
+                focusedContainerColor = LocalInk.current.copy(alpha = 0.10f),
+                unfocusedContainerColor = LocalInk.current.copy(alpha = 0.10f),
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
+                focusedTextColor = LocalInk.current,
+                unfocusedTextColor = LocalInk.current,
             ),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
         )
@@ -1474,7 +1526,7 @@ private fun WorkAppsPicker(
                 ) {
                     AppImage(app, 40.dp)
                     Spacer(Modifier.width(14.dp))
-                    Text(app.label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text(app.label, color = LocalInk.current, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     Checkbox(checked = on, onCheckedChange = { onToggle(app, it) })
                 }
             }
@@ -1530,7 +1582,7 @@ private fun ProfileTabs(workTab: Boolean, onSelect: (Boolean) -> Unit) {
             .padding(horizontal = 20.dp)
             .padding(bottom = 10.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.08f))
+            .background(LocalInk.current.copy(alpha = 0.08f))
             .padding(4.dp),
     ) {
         TabPill("Personal", Icons.Outlined.Person, selected = !workTab, Modifier.weight(1f)) { onSelect(false) }
@@ -1541,7 +1593,7 @@ private fun ProfileTabs(workTab: Boolean, onSelect: (Boolean) -> Unit) {
 @Composable
 private fun TabPill(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else Color.White.copy(alpha = 0.75f)
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else LocalInk.current.copy(alpha = 0.75f)
     Row(
         modifier
             .height(40.dp)
@@ -1564,15 +1616,15 @@ private fun PausedBanner(onTurnOn: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = 0.08f))
+            .background(LocalInk.current.copy(alpha = 0.08f))
             .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Outlined.WorkOff, null, tint = Color.White.copy(alpha = 0.8f))
+        Icon(Icons.Outlined.WorkOff, null, tint = LocalInk.current.copy(alpha = 0.8f))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("Work apps are paused", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            Text("You won't get work notifications", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+            Text("Work apps are paused", color = LocalInk.current, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text("You won't get work notifications", color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
         }
         Text(
             "Turn on",
@@ -1614,7 +1666,7 @@ private fun FastScroller(letters: List<String>, onSelect: (String) -> Unit, modi
             modifier = Modifier
                 .width(24.dp)
                 .clip(CircleShape)
-                .background(if (active != null) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+                .background(if (active != null) LocalInk.current.copy(alpha = 0.12f) else Color.Transparent)
                 .padding(vertical = 6.dp)
                 .onSizeChanged { heightPx = it.height.coerceAtLeast(1) }
                 .pointerInput(Unit) {
@@ -1635,7 +1687,7 @@ private fun FastScroller(letters: List<String>, onSelect: (String) -> Unit, modi
             letters.forEach { letter ->
                 Text(
                     letter,
-                    color = if (letter == active) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f),
+                    color = if (letter == active) MaterialTheme.colorScheme.primary else LocalInk.current.copy(alpha = 0.6f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(vertical = 1.dp),

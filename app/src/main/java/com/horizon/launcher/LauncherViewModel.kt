@@ -504,7 +504,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Full-screen helpers opened from the add wheel (or Settings, for Icon style). */
-    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites }
+    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites, ClockFaces }
+
+    /** Choose the clock face (keeps the older Compact / Dial switches in step). */
+    fun setClockFace(face: ClockFace) = updateSettings {
+        it.copy(clockFace = face.id, compactClock = face == ClockFace.Compact, dialClock = face.dialVariant != null)
+    }
 
     private val _overlay = MutableStateFlow<Overlay?>(null)
     val overlay: StateFlow<Overlay?> = _overlay.asStateFlow()

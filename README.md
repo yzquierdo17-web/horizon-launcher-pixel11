@@ -24,7 +24,10 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
   - **Wallpaper:** Material You colours from your wallpaper.
   - **Graphite:** soft neutral greys.
   - **Midnight:** deep navy with blue accents.
+  - **Forest:** dark green.
+  - **Plum:** dark purple.
   - **AMOLED:** true black, which saves battery on OLED screens.
+  - **Paper:** a light drawer, folders and settings. Home keeps white text on your wallpaper, and the lock-screen dial stays dark.
 
   The drawer, folders, settings, add wheel and lock-screen dial all follow the theme.
 - **Motion:** the wallpaper glides as you swipe pages (with wide or live wallpapers; you can turn this off), pages settle with a soft spring, and apps ripple in when the drawer opens.
@@ -41,6 +44,15 @@ Builds are signed with a permanent key once two repository secrets are set (Sett
 - `HORIZON_KEY_PASSWORD`: its password
 
 After that, every new APK installs over the last one. Without them, builds fall back to a temporary key, and you may need to uninstall first.
+
+### Clock faces
+Settings → Look → **Clock face** opens a picker with live previews:
+- **Large** and **Compact**
+- **Dial**, **Dial · Minimal** (no ticks), **Dial · Bold** (heavy hour, solid accent pill) and **Dial · Outline** (outlined hour)
+- **Stacked:** bold hours over thin minutes
+- **Words:** "It's four forty-five"
+
+The clock sits on the first Home page only and slides away with it as you swipe. The lock-screen dial uses the same dial variant. **Label size** (small, medium or large) is in the same section.
 
 ### Dial clock
 - **Settings → Look → Clock → Dial:** a watch-bezel clock. The big hour sits on the left, and a minute scale and a seconds scale turn smoothly so the current minute and second line up in a pill, with the date in small spaced capitals beside it. Tap the dial for Clock, or the date for Calendar. It redraws about 30 times a second and stops when Home isn't on screen.

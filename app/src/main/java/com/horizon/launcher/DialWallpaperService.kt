@@ -135,9 +135,25 @@ class DialRenderer(context: Context) {
 
     var battery = -1
     var background = HorizonLook.saved(context).dial
+    /** Same dial variant as Home (Minimal, Bold, Outline…); Classic if Home uses another face. */
+    var variant = savedVariant(context)
+    private var accent = accentColor(context)
 
-    /** Re-read the chosen look (it may have changed in Settings). */
-    fun reloadTheme(context: Context) { background = HorizonLook.saved(context).dial }
+    /** Re-read the chosen look and dial (they may have changed in Settings). */
+    fun reloadTheme(context: Context) {
+        background = HorizonLook.saved(context).dial
+        variant = savedVariant(context)
+        accent = accentColor(context)
+    }
+
+    private fun savedVariant(context: Context): DialVariant = runCatching {
+        val json = context.getSharedPreferences("horizon", Context.MODE_PRIVATE).getString("settings", null)
+        DialVariant.of(LauncherSettings.fromJson(org.json.JSONObject(json ?: "{}")).clockFace)
+    }.getOrNull() ?: DialVariant.Classic
+
+    private fun accentColor(context: Context): Int =
+        if (android.os.Build.VERSION.SDK_INT >= 31) context.getColor(android.R.color.system_accent1_200) else 0xFFA4C6FF.toInt()
+
 
     // Inter, matching the Home screen dial (falls back to the phone's font).
     private val inter: Typeface? = runCatching { androidx.core.content.res.ResourcesCompat.getFont(context, R.font.inter) }.getOrNull()
@@ -147,6 +163,8 @@ class DialRenderer(context: Context) {
     private val regular = face(400, "sans-serif")
     private val medium = face(500, "sans-serif-medium")
     private val bold = face(700, "sans-serif", Typeface.BOLD)
+    private val extraLight = face(200, "sans-serif-thin")
+    private val heavy = face(800, "sans-serif-black", Typeface.BOLD)
 
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); textAlign = Paint.Align.CENTER; typeface = regular }
     private val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeCap = Paint.Cap.ROUND }
@@ -167,8 +185,9 @@ class DialRenderer(context: Context) {
         val cx = dp(52f)
         val cy = h * 0.44f // a little above centre, clear of notifications and Pixel's own clock
 
-        drawScale(c, cx, cy, rMin, min, sp(15f), dp(14f), dp(6f), dp(3f), 0.35f)
-        drawScale(c, cx, cy, rSec, sec, sp(12f), dp(13f), dp(9f), dp(5f), 0.6f)
+        val ticks = if (variant.ticks) 1f else 0f
+        drawScale(c, cx, cy, rMin, min, sp(15f), dp(14f), dp(6f), dp(3f), 0.35f * ticks)
+        drawScale(c, cx, cy, rSec, sec, sp(12f), dp(13f), dp(9f), dp(5f), 0.6f * ticks)
 
         // Pill around the current minute and second.
         val pillH = dp(34f)
@@ -176,19 +195,40 @@ class DialRenderer(context: Context) {
         val pillRight = cx + rSec + dp(17f)
         pill.strokeWidth = dp(1.5f)
         rect.set(pillLeft, cy - pillH / 2f, pillRight, cy + pillH / 2f)
+        val filled = variant == DialVariant.Bold
+        if (filled) {
+            pill.style = Paint.Style.FILL
+            pill.color = accent
+        } else {
+            pill.style = Paint.Style.STROKE
+            pill.color = 0xEBFFFFFF.toInt()
+            if (variant == DialVariant.Minimal) pill.strokeWidth = dp(1f)
+        }
         c.drawRoundRect(rect, pillH / 2f, pillH / 2f, pill)
+        text.color = if (filled) 0xFF0A1F3D.toInt() else 0xFFFFFFFF.toInt()
 
         text.textAlign = Paint.Align.CENTER
         drawCentered(c, pad(t.minute), cx + rMin, cy, text.apply { typeface = medium; textSize = sp(20f); alpha = 255 })
         drawCentered(c, pad(t.second), cx + rSec, cy, text.apply { typeface = regular; textSize = sp(13f) })
+        text.color = 0xFFFFFFFF.toInt()
 
         // Big hour, right-aligned against the pill.
         val hour = if (is24h) t.hour else (t.hour % 12).let { if (it == 0) 12 else it }
         text.textAlign = Paint.Align.RIGHT
-        text.typeface = light
-        text.textSize = sp(58f)
+        text.typeface = when (variant) {
+            DialVariant.Minimal -> extraLight
+            DialVariant.Bold -> heavy
+            DialVariant.Outline -> bold
+            DialVariant.Classic -> light
+        }
+        text.textSize = sp(if (variant == DialVariant.Bold) 64f else if (variant == DialVariant.Outline) 66f else 58f)
+        if (variant == DialVariant.Outline) {
+            text.style = Paint.Style.STROKE
+            text.strokeWidth = dp(1.4f)
+        }
         text.letterSpacing = -0.03f
         drawCentered(c, pad(hour), pillLeft - dp(10f), cy, text)
+        text.style = Paint.Style.FILL
         text.letterSpacing = 0f
 
         // Date in small spaced capitals.
