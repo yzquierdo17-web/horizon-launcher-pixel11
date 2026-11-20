@@ -55,7 +55,7 @@ jobs:
       - name: Build the APK
         run: |
           set -o pipefail
-          gradle assembleDebug 2>&1 | tee build.log || {
+          gradle assembleRelease 2>&1 | tee build.log || {
             grep -E "^e: |error:" build.log | head -25 | while read -r line; do echo "::error::$line"; done
             exit 1
           }
@@ -64,14 +64,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Horizon-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       # Builds of main also go to Releases, so this link always installs the newest version:
       # https://github.com/${{ github.repository }}/releases/latest/download/Horizon.apk
       - name: Name the APK
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: cp app/build/outputs/apk/debug/*.apk Horizon.apk
+        run: cp app/build/outputs/apk/release/*.apk Horizon.apk
 
       - name: Publish to Releases
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

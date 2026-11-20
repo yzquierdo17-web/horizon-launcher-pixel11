@@ -16,8 +16,8 @@ android {
         applicationId = "com.horizon.launcher"
         minSdk = 29
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.13"
+        versionCode = 14
+        versionName = "0.14"
     }
 
     signingConfigs {
@@ -35,9 +35,13 @@ android {
         debug {
             signingConfigs.findByName("horizon")?.let { signingConfig = it }
         }
+        // The build you install: optimized by R8 (smaller, faster), with a startup profile so
+        // Android pre-compiles the hot paths. Signed with the permanent key when it's available.
         release {
-            isMinifyEnabled = false
-            signingConfigs.findByName("horizon")?.let { signingConfig = it }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("horizon") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -67,4 +71,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    // Installs the Compose libraries' built-in startup profiles: faster launch and smoother scrolling.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 }

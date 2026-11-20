@@ -89,7 +89,7 @@ fun MinimalHome(
                 .padding(vertical = 6.dp, horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("All apps", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, style = TextStyle(shadow = TextShadow))
+            Text("All apps", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp, style = TextStyle(fontFamily = LocalAppFont.current, shadow = TextShadow))
         }
     }
 }
@@ -139,7 +139,7 @@ fun MinimalAppRow(
             Text(
                 app.label,
                 color = Color.White,
-                style = TextStyle(
+                style = TextStyle(fontFamily = LocalAppFont.current, 
                     fontSize = fontSize,
                     fontWeight = FontWeight.Light,
                     letterSpacing = (-0.3).sp,

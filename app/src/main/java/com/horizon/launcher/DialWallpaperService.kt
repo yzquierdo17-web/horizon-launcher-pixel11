@@ -135,10 +135,14 @@ class DialRenderer(context: Context) {
     var battery = -1
     var background = 0xFF232427.toInt()
 
-    private val light = Typeface.create("sans-serif-light", Typeface.NORMAL)
-    private val regular = Typeface.create("sans-serif", Typeface.NORMAL)
-    private val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-    private val bold = Typeface.create("sans-serif", Typeface.BOLD)
+    // Inter, matching the Home screen dial (falls back to the phone's font).
+    private val inter: Typeface? = runCatching { androidx.core.content.res.ResourcesCompat.getFont(context, R.font.inter) }.getOrNull()
+    private fun face(weight: Int, fallback: String, style: Int = Typeface.NORMAL): Typeface =
+        inter?.let { Typeface.create(it, weight, false) } ?: Typeface.create(fallback, style)
+    private val light = face(300, "sans-serif-light")
+    private val regular = face(400, "sans-serif")
+    private val medium = face(500, "sans-serif-medium")
+    private val bold = face(700, "sans-serif", Typeface.BOLD)
 
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); textAlign = Paint.Align.CENTER; typeface = regular }
     private val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeCap = Paint.Cap.ROUND }

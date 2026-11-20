@@ -1,5 +1,7 @@
 package com.horizon.launcher
 
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.produceState
@@ -156,12 +158,17 @@ fun LauncherScreen(
     val shortcuts = remember(vm) { { app: AppEntry -> vm.shortcutsFor(app) } }
     val focusActive by vm.focusActive.collectAsState()
     val focusKeys = if (focusActive) settings.focusApps else emptySet()
+    val font = if (settings.appFont == "system") null else InterFamily
+    val colors = MaterialTheme.colorScheme
     CompositionLocalProvider(
         LocalSettings provides settings,
         LocalAppShortcuts provides shortcuts,
         LocalFocusKeys provides focusKeys,
+        LocalAppFont provides font,
     ) {
-        LauncherContent(vm, settings, onAddWidget, onBlur, onBackup, onRestore)
+        MaterialTheme(colorScheme = colors, typography = typographyFor(font)) {
+            LauncherContent(vm, settings, onAddWidget, onBlur, onBackup, onRestore)
+        }
     }
 }
 
@@ -650,7 +657,7 @@ private fun HomePage(
             Text(
                 "Long-press any app in the drawer to add it here,\nor long-press the home screen for widgets.",
                 color = Color.White.copy(alpha = 0.75f),
-                style = TextStyle(fontSize = 14.sp, textAlign = TextAlign.Center, shadow = LabelShadow),
+                style = TextStyle(fontFamily = LocalAppFont.current, fontSize = 14.sp, textAlign = TextAlign.Center, shadow = LabelShadow),
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
             )
         }
@@ -800,14 +807,14 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
                 Text(
                     text = time,
                     color = Color.White,
-                    style = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Normal, letterSpacing = (-1).sp, shadow = ClockShadow),
+                    style = TextStyle(fontFamily = LocalAppFont.current, fontSize = 44.sp, fontWeight = FontWeight.Normal, letterSpacing = (-1).sp, shadow = ClockShadow),
                     modifier = Modifier.clickable(onClick = openClock),
                 )
                 Spacer(Modifier.width(14.dp))
                 Text(
                     text = date,
                     color = Color.White.copy(alpha = 0.92f),
-                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
+                    style = TextStyle(fontFamily = LocalAppFont.current, fontSize = 17.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
                     modifier = Modifier.padding(bottom = 8.dp).clickable(onClick = openCalendar),
                 )
             }
@@ -815,13 +822,13 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
             Text(
                 text = time,
                 color = Color.White,
-                style = TextStyle(fontSize = 80.sp, fontWeight = FontWeight.Light, letterSpacing = (-2.5).sp, shadow = ClockShadow),
+                style = TextStyle(fontFamily = LocalAppFont.current, fontSize = 80.sp, fontWeight = FontWeight.Light, letterSpacing = (-2.5).sp, shadow = ClockShadow),
                 modifier = Modifier.clickable(onClick = openClock),
             )
             Text(
                 text = date,
                 color = Color.White.copy(alpha = 0.92f),
-                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
+                style = TextStyle(fontFamily = LocalAppFont.current, fontSize = 18.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
                 modifier = Modifier.clickable(onClick = openCalendar),
             )
         }
@@ -830,7 +837,7 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
             Text(
                 text = glance.joinToString("   ·   "),
                 color = Color.White.copy(alpha = 0.8f),
-                style = TextStyle(fontSize = 14.sp, shadow = ClockShadow),
+                style = TextStyle(fontFamily = LocalAppFont.current, fontSize = 14.sp, shadow = ClockShadow),
                 modifier = Modifier.clickable(onClick = openClock),
             )
         }
@@ -917,7 +924,7 @@ private fun MeetingLine(meeting: Meeting, now: LocalDateTime, onOpen: () -> Unit
             Text(
                 "${meeting.title} \u00B7 $whenText",
                 color = Color.White,
-                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
+                style = TextStyle(fontFamily = LocalAppFont.current, fontSize = 15.sp, fontWeight = FontWeight.Medium, shadow = ClockShadow),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -981,8 +988,7 @@ private fun Dock(
             .fillMaxWidth()
             .heightIn(min = 76.dp)
             .onGloballyPositioned { drag.dockBounds = it.boundsInRoot() }
-            .clip(RoundedCornerShape(32.dp))
-            .background(Color.White.copy(alpha = if (highlight) 0.26f else 0.14f))
+            .glass(RoundedCornerShape(34.dp), highlight)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
@@ -1019,8 +1025,7 @@ private fun SearchPill(modifier: Modifier = Modifier, onClick: () -> Unit) {
         modifier
             .fillMaxWidth()
             .height(52.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.18f))
+            .glass(CircleShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1709,3 +1714,23 @@ private fun expandNotifications(view: View) {
         Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(service)
     }
 }
+
+
+/**
+ * Frosted-glass surface for the dock and search bar: a soft light-to-clear fill, a hairline
+ * rim that catches the light on top, and a faint shadow so it floats above the wallpaper.
+ */
+private fun Modifier.glass(shape: androidx.compose.ui.graphics.Shape, highlight: Boolean = false): Modifier = this
+    .shadow(elevation = 10.dp, shape = shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.35f))
+    .clip(shape)
+    .background(
+        Brush.verticalGradient(
+            if (highlight) listOf(Color.White.copy(alpha = 0.34f), Color.White.copy(alpha = 0.22f))
+            else listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.09f)),
+        ),
+    )
+    .border(
+        width = 1.dp,
+        brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0.06f))),
+        shape = shape,
+    )

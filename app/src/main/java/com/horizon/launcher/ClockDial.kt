@@ -63,12 +63,13 @@ fun DialClock(
     }
 
     val measurer = rememberTextMeasurer()
+    val font = LocalAppFont.current
     val shadow = Shadow(Color.Black.copy(alpha = 0.35f), Offset(0f, 1f), 6f)
-    val minuteStyle = TextStyle(color = Color.White, fontSize = 15.sp, shadow = shadow)
-    val secondStyle = TextStyle(color = Color.White, fontSize = 12.sp, shadow = shadow)
+    val minuteStyle = TextStyle(fontFamily = font, color = Color.White, fontSize = 15.sp, shadow = shadow)
+    val secondStyle = TextStyle(fontFamily = font, color = Color.White, fontSize = 12.sp, shadow = shadow)
     // Pre-measure the scale labels once; only their position and fade change per frame.
-    val minuteLabels = remember(measurer) { (0 until 60 step 5).associateWith { measurer.measure(it.pad(), minuteStyle) } }
-    val secondLabels = remember(measurer) { (0 until 60 step 5).associateWith { measurer.measure(it.pad(), secondStyle) } }
+    val minuteLabels = remember(measurer, font) { (0 until 60 step 5).associateWith { measurer.measure(it.pad(), minuteStyle) } }
+    val secondLabels = remember(measurer, font) { (0 until 60 step 5).associateWith { measurer.measure(it.pad(), secondStyle) } }
 
     val dateFmt = remember { DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault()) }
     val dayFmt = remember { DateTimeFormatter.ofPattern("EEEE", Locale.getDefault()) }
@@ -107,12 +108,12 @@ fun DialClock(
             cornerRadius = CornerRadius(pillH / 2f),
             style = Stroke(width = 1.5.dp.toPx()),
         )
-        drawCentered(measurer.measure(time.minute.pad(), TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium, shadow = shadow)), Offset(c.x + rMin, c.y))
-        drawCentered(measurer.measure(time.second.pad(), TextStyle(color = Color.White, fontSize = 13.sp, shadow = shadow)), Offset(c.x + rSec, c.y))
+        drawCentered(measurer.measure(time.minute.pad(), TextStyle(fontFamily = font, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium, shadow = shadow)), Offset(c.x + rMin, c.y))
+        drawCentered(measurer.measure(time.second.pad(), TextStyle(fontFamily = font, color = Color.White, fontSize = 13.sp, shadow = shadow)), Offset(c.x + rSec, c.y))
 
         // Big hour, right-aligned against the pill.
         val hour = if (is24h) time.hour else (time.hour % 12).let { if (it == 0) 12 else it }
-        val hourText = measurer.measure(hour.pad(), TextStyle(color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light, letterSpacing = (-2).sp, shadow = shadow))
+        val hourText = measurer.measure(hour.pad(), TextStyle(fontFamily = font, color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light, letterSpacing = (-2).sp, shadow = shadow))
         drawText(hourText, topLeft = Offset(pillLeft - 10.dp.toPx() - hourText.size.width, c.y - hourText.size.height / 2f))
 
         // Date in small spaced capitals.
@@ -120,11 +121,11 @@ fun DialClock(
         dateLeft[0] = dateX
         val dateText = measurer.measure(
             time.format(dateFmt).uppercase(),
-            TextStyle(color = Color.White.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.sp, shadow = shadow),
+            TextStyle(fontFamily = font, color = Color.White.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.sp, shadow = shadow),
         )
         val dayText = measurer.measure(
             time.format(dayFmt).uppercase(),
-            TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.5.sp, shadow = shadow),
+            TextStyle(fontFamily = font, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.5.sp, shadow = shadow),
         )
         if (dateX + maxOf(dateText.size.width, dayText.size.width) <= size.width) {
             drawText(dateText, topLeft = Offset(dateX, c.y - dateText.size.height - 2.dp.toPx()))
@@ -132,7 +133,7 @@ fun DialClock(
             if (weather != null) {
                 val w = measurer.measure(
                     weather.uppercase(),
-                    TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 9.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.8.sp, shadow = shadow),
+                    TextStyle(fontFamily = font, color = Color.White.copy(alpha = 0.7f), fontSize = 9.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.8.sp, shadow = shadow),
                 )
                 if (dateX + w.size.width <= size.width) {
                     drawText(w, topLeft = Offset(dateX, c.y + 6.dp.toPx() + dayText.size.height))

@@ -307,12 +307,24 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val iconCache by lazy { IconCache(getApplication()) }
+
     private fun loadApps(): List<AppEntry> {
         val ctx = getApplication<Application>()
         val px = (72 * ctx.resources.displayMetrics.density).toInt()
         val s = _settings.value
-        val pack = s.iconPack.takeIf { it.isNotEmpty() }?.let { IconPack.load(ctx, it) }
-        val renderer = IconRenderer(ctx, px, IconShape.of(s.iconShape), s.themedIcons, pack)
+        // The icon pack is only opened if an icon actually needs drawing (cache miss).
+        val pack by lazy { s.iconPack.takeIf { it.isNotEmpty() }?.let { IconPack.load(ctx, it) } }
+        val renderer by lazy { IconRenderer(ctx, px, IconShape.of(s.iconShape), s.themedIcons, pack) }
+        // Everything that changes how icons look; a change here means fresh icons.
+        val packVersion = s.iconPack.takeIf { it.isNotEmpty() }?.let { p ->
+            runCatching { ctx.packageManager.getApplicationInfo(p, 0).sourceDir }.getOrNull()
+        }
+        val themeColors = if (s.themedIcons && android.os.Build.VERSION.SDK_INT >= 31) {
+            "${ctx.getColor(android.R.color.system_accent1_800)}/${ctx.getColor(android.R.color.system_accent1_100)}"
+        } else ""
+        val style = "${s.iconShape}|${s.iconPack}|$packVersion|${s.themedIcons}|$themeColors|$px"
+        val usedKeys = ArrayList<String>()
         val me = Process.myUserHandle()
         val quiet = userManager.userProfiles.filter { it != me && userManager.isQuietModeEnabled(it) }.toSet()
         return userManager.userProfiles
@@ -324,13 +336,20 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                     component = info.componentName,
                     user = info.user,
                     serial = userManager.getSerialNumberForUser(info.user),
-                    icon = (runCatching { renderer.render(info) }.getOrNull()
-                        ?: info.getBadgedIcon(0).toBitmap(px, px)).asImageBitmap(),
+                    icon = run {
+                        val serial = userManager.getSerialNumberForUser(info.user)
+                        val key = "${info.componentName.flattenToString()}#$serial|${info.applicationInfo.sourceDir}|$style"
+                        usedKeys += key
+                        iconCache.getOrPut(key) {
+                            runCatching { renderer.render(info) }.getOrNull() ?: info.getBadgedIcon(0).toBitmap(px, px)
+                        }.asImageBitmap()
+                    },
                     isWork = info.user != me,
                     isPaused = info.user in quiet,
                 )
             }
             .sortedBy { it.label.lowercase() }
+            .also { iconCache.prune(usedKeys) }
     }
 
     private fun ensureDefaultDock(list: List<AppEntry>) {

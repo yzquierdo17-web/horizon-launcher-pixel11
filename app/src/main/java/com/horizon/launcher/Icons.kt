@@ -150,7 +150,7 @@ fun LauncherIcon(
                 Text(
                     text = label,
                     color = Color.White,
-                    style = TextStyle(
+                    style = TextStyle(fontFamily = LocalAppFont.current, 
                         fontSize = 12.sp,
                         shadow = if (labelShadow) LabelShadow else null,
                     ),

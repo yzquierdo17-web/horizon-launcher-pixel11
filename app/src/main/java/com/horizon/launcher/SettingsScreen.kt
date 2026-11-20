@@ -99,6 +99,14 @@ fun SettingsScreen(
         ) {
             item { Section("Look") }
             item {
+                ChoiceRow(
+                    title = "Font",
+                    options = listOf("Inter" to "inter", "Phone default" to "system"),
+                    selected = s.appFont,
+                    accent = accent,
+                ) { v -> vm.updateSettings { it.copy(appFont = v) } }
+            }
+            item {
                 val shape = IconShape.of(s.iconShape).label
                 ActionRow("Icon style", if (s.iconPack.isEmpty()) "$shape · no icon pack" else "$shape · icon pack on") {
                     vm.showOverlay(LauncherViewModel.Overlay.IconStyle)
@@ -523,7 +531,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.13"
+    const val NAME = "0.14"
 }
 
 @Composable

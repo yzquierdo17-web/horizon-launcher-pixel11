@@ -61,7 +61,7 @@ fun FolderOverlay(
                 value = folder.name,
                 onValueChange = { vm.renameFolder(folder.id, it) },
                 singleLine = true,
-                textStyle = TextStyle(
+                textStyle = TextStyle(fontFamily = LocalAppFont.current, 
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Medium,
