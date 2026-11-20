@@ -46,6 +46,7 @@ import kotlin.math.sin
 @Composable
 fun DialClock(
     is24h: Boolean,
+    weather: String? = null,
     onOpenClock: () -> Unit,
     onOpenCalendar: () -> Unit,
     modifier: Modifier = Modifier,
@@ -128,6 +129,15 @@ fun DialClock(
         if (dateX + maxOf(dateText.size.width, dayText.size.width) <= size.width) {
             drawText(dateText, topLeft = Offset(dateX, c.y - dateText.size.height - 2.dp.toPx()))
             drawText(dayText, topLeft = Offset(dateX, c.y + 2.dp.toPx()))
+            if (weather != null) {
+                val w = measurer.measure(
+                    weather.uppercase(),
+                    TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 9.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.8.sp, shadow = shadow),
+                )
+                if (dateX + w.size.width <= size.width) {
+                    drawText(w, topLeft = Offset(dateX, c.y + 6.dp.toPx() + dayText.size.height))
+                }
+            }
         }
     }
 }

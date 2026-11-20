@@ -60,6 +60,10 @@ fun SettingsScreen(
     val context = LocalContext.current
     val s by vm.settings.collectAsState()
     val work by vm.workProfile.collectAsState()
+    val hiddenUnlocked by vm.hiddenUnlocked.collectAsState()
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        vm.refreshWeather(force = true)
+    }
     val accent = MaterialTheme.colorScheme.primary
     val is24h = android.text.format.DateFormat.is24HourFormat(context)
     var calendarGranted by remember { mutableStateOf(vm.calendar.hasPermission()) }
@@ -300,6 +304,82 @@ fun SettingsScreen(
                 }
             }
 
+            item { Section("Minimal mode") }
+            item {
+                ToggleRow(
+                    "Minimal mode",
+                    "Your favourite apps as a clean text list on Home, and a text-only app list",
+                    s.minimalMode,
+                ) { v -> vm.updateSettings { it.copy(minimalMode = v) } }
+            }
+            if (s.minimalMode) item {
+                ActionRow("Favourites", "${s.minimalFavorites.ifEmpty { vm.defaultFavorites() }.size} apps on Home") {
+                    vm.showOverlay(LauncherViewModel.Overlay.Favorites)
+                }
+            }
+
+            item { Section("Focus") }
+            item {
+                ToggleRow("Focus now", "Grey out distracting apps and hide their dots", s.focusOn) { v ->
+                    vm.setFocus(v)
+                    if (v && s.focusApps.isEmpty()) vm.showOverlay(LauncherViewModel.Overlay.FocusApps)
+                }
+            }
+            item {
+                ToggleRow("Focus during work hours", "Turns on by itself when your work hours start", s.focusDuringWork) { v ->
+                    vm.updateSettings { it.copy(focusDuringWork = v) }
+                }
+            }
+            item {
+                ActionRow("Distracting apps", if (s.focusApps.isEmpty()) "None chosen yet" else "${s.focusApps.size} apps") {
+                    vm.showOverlay(LauncherViewModel.Overlay.FocusApps)
+                }
+            }
+
+            item { Section("Weather") }
+            item {
+                ToggleRow(
+                    "Weather next to the date",
+                    if (s.weatherCity.isNotBlank()) "For ${s.weatherCity}"
+                    else if (vm.weatherRepo.hasLocationPermission()) "For your approximate location"
+                    else "Needs your approximate location, or type a city below",
+                    s.showWeather,
+                ) { v ->
+                    vm.updateSettings { it.copy(showWeather = v) }
+                    if (v && s.weatherCity.isBlank() && !vm.weatherRepo.hasLocationPermission()) {
+                        locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                    }
+                }
+            }
+            if (s.showWeather) {
+                item {
+                    var city by remember(s.weatherCity) { mutableStateOf(s.weatherCity) }
+                    androidx.compose.material3.OutlinedTextField(
+                        value = city,
+                        onValueChange = { city = it },
+                        singleLine = true,
+                        label = { Text("City (leave empty to use your location)") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                            vm.updateSettings { it.copy(weatherCity = city.trim()) }
+                        }),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                        ),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+                item {
+                    ChoiceRow(
+                        title = "Units",
+                        options = listOf("Auto" to "auto", "°F" to "f", "°C" to "c"),
+                        selected = s.weatherUnit,
+                        accent = accent,
+                    ) { v -> vm.updateSettings { it.copy(weatherUnit = v) } }
+                }
+            }
+
             item { Section("Work") }
             item {
                 ToggleRow(
@@ -398,7 +478,18 @@ fun SettingsScreen(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 )
             }
-            items(apps, key = { "hide-" + it.key }) { app ->
+            item {
+                ToggleRow("Lock hidden apps", "Ask for your fingerprint or screen lock to see them", s.lockHidden) { v ->
+                    if (v) vm.updateSettings { it.copy(lockHidden = true) }
+                    else unlockWithBiometrics(context, "Turn off the lock") { vm.updateSettings { it.copy(lockHidden = false) } }
+                }
+            }
+            if (s.lockHidden && !hiddenUnlocked) item {
+                ActionRow("Unlock to manage", "${s.hidden.size} hidden") {
+                    unlockWithBiometrics(context, "Hidden apps") { vm.setHiddenUnlocked(true) }
+                }
+            }
+            if (!s.lockHidden || hiddenUnlocked) items(apps, key = { "hide-" + it.key }) { app ->
                 val hidden = app.key in s.hidden
                 Row(
                     Modifier
@@ -432,7 +523,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.12"
+    const val NAME = "0.13"
 }
 
 @Composable

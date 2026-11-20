@@ -181,6 +181,23 @@ data class LauncherSettings(
     val dotCounts: Boolean = false,
     /** Double-tap empty space on Home to lock the screen (uses the island helper). */
     val doubleTapLock: Boolean = true,
+    /** Minimal mode: favourite apps as a text list, text-only drawer. */
+    val minimalMode: Boolean = false,
+    /** Favourites for minimal mode (app keys). Empty = use the dock and first Home page. */
+    val minimalFavorites: List<String> = emptyList(),
+    /** Hidden apps need fingerprint / screen lock to view. */
+    val lockHidden: Boolean = true,
+    /** Focus mode: distracting apps greyed out and their dots hidden. */
+    val focusOn: Boolean = false,
+    val focusDuringWork: Boolean = false,
+    val focusApps: Set<String> = emptySet(),
+    val showWeather: Boolean = true,
+    /** City for weather, or "" to use your approximate location. */
+    val weatherCity: String = "",
+    /** "auto", "c" or "f". */
+    val weatherUnit: String = "auto",
+    val weatherPromptDone: Boolean = false,
+    val contactsPromptDone: Boolean = false,
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -212,6 +229,17 @@ data class LauncherSettings(
         .put("dots", notificationDots)
         .put("dotCounts", dotCounts)
         .put("dtLock", doubleTapLock)
+        .put("minimal", minimalMode)
+        .put("minFav", JSONArray(minimalFavorites))
+        .put("lockHidden", lockHidden)
+        .put("focusOn", focusOn)
+        .put("focusWork", focusDuringWork)
+        .put("focusApps", JSONArray(focusApps.toList()))
+        .put("weather", showWeather)
+        .put("weatherCity", weatherCity)
+        .put("weatherUnit", weatherUnit)
+        .put("weatherPrompt", weatherPromptDone)
+        .put("contactsPrompt", contactsPromptDone)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -242,6 +270,17 @@ data class LauncherSettings(
                 notificationDots = o.optBoolean("dots", true),
                 dotCounts = o.optBoolean("dotCounts", false),
                 doubleTapLock = o.optBoolean("dtLock", true),
+                minimalMode = o.optBoolean("minimal", false),
+                minimalFavorites = o.optJSONArray("minFav")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
+                lockHidden = o.optBoolean("lockHidden", true),
+                focusOn = o.optBoolean("focusOn", false),
+                focusDuringWork = o.optBoolean("focusWork", false),
+                focusApps = o.optJSONArray("focusApps")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet(),
+                showWeather = o.optBoolean("weather", true),
+                weatherCity = o.optString("weatherCity", ""),
+                weatherUnit = o.optString("weatherUnit", "auto"),
+                weatherPromptDone = o.optBoolean("weatherPrompt", false),
+                contactsPromptDone = o.optBoolean("contactsPrompt", false),
             )
         }
     }

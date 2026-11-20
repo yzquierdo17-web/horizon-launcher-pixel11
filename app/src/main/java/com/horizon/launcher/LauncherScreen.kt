@@ -1,5 +1,10 @@
 package com.horizon.launcher
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.produceState
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Settings
 import android.annotation.SuppressLint
 import android.app.ActivityOptions
 import android.app.AlarmManager
@@ -24,7 +29,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material3.Checkbox
 import androidx.compose.material.icons.outlined.Person
@@ -147,7 +154,13 @@ fun LauncherScreen(
 ) {
     val settings by vm.settings.collectAsState()
     val shortcuts = remember(vm) { { app: AppEntry -> vm.shortcutsFor(app) } }
-    CompositionLocalProvider(LocalSettings provides settings, LocalAppShortcuts provides shortcuts) {
+    val focusActive by vm.focusActive.collectAsState()
+    val focusKeys = if (focusActive) settings.focusApps else emptySet()
+    CompositionLocalProvider(
+        LocalSettings provides settings,
+        LocalAppShortcuts provides shortcuts,
+        LocalFocusKeys provides focusKeys,
+    ) {
         LauncherContent(vm, settings, onAddWidget, onBlur, onBackup, onRestore)
     }
 }
@@ -388,6 +401,28 @@ private fun LauncherContent(
             LauncherViewModel.Overlay.Wheel -> AddWheel(vm) { vm.showOverlay(null) }
             LauncherViewModel.Overlay.AddApp -> AddAppScreen(vm, visibleApps) { vm.showOverlay(null) }
             LauncherViewModel.Overlay.IconStyle -> IconStyleScreen(vm, visibleApps) { vm.showOverlay(null) }
+            LauncherViewModel.Overlay.HiddenApps -> HiddenAppsScreen(vm, apps.filter { it.key in settings.hidden }) { vm.showOverlay(null) }
+            LauncherViewModel.Overlay.FocusApps -> AppChecklistScreen(
+                title = "Distracting apps",
+                subtitle = "Greyed out with no dots while Focus is on",
+                apps = visibleApps,
+                selected = settings.focusApps,
+                onToggle = { app, on ->
+                    vm.updateSettings { it.copy(focusApps = if (on) it.focusApps + app.key else it.focusApps - app.key) }
+                },
+            ) { vm.showOverlay(null) }
+            LauncherViewModel.Overlay.Favorites -> AppChecklistScreen(
+                title = "Favourites",
+                subtitle = "The apps listed on Home in minimal mode",
+                apps = visibleApps,
+                selected = settings.minimalFavorites.ifEmpty { vm.defaultFavorites() }.toSet(),
+                onToggle = { app, on ->
+                    vm.updateSettings { s ->
+                        val base = s.minimalFavorites.ifEmpty { vm.defaultFavorites() }
+                        s.copy(minimalFavorites = if (on) (base + app.key).distinct() else base - app.key)
+                    }
+                },
+            ) { vm.showOverlay(null) }
             null -> Unit
         }
 
@@ -533,6 +568,20 @@ private fun HomeScreen(
             ClockHeader(vm = vm, compact = settings.compactClock, modifier = Modifier.padding(horizontal = 24.dp))
             Spacer(Modifier.height(12.dp))
 
+            if (settings.minimalMode) {
+                val favorites = remember(settings.minimalFavorites, index, dockKeys, items) {
+                    settings.minimalFavorites.ifEmpty { vm.defaultFavorites() }
+                        .mapNotNull { index[it] }
+                        .filter { it.key !in settings.hidden }
+                }
+                MinimalHome(
+                    vm = vm,
+                    favorites = favorites,
+                    dockKeys = dockKeys,
+                    onLaunch = onLaunch,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+            } else {
             HorizontalPager(
                 state = pager,
                 userScrollEnabled = !drag.active,
@@ -565,6 +614,7 @@ private fun HomeScreen(
                 onDrop = onDrop,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
+            }
             if (settings.showSearch) {
                 Spacer(Modifier.height(12.dp))
                 SearchPill(Modifier.padding(horizontal = 16.dp)) { vm.openDrawer(focusSearch = true) }
@@ -713,6 +763,13 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
         vm.refreshMeetings()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { calendarGranted = vm.calendar.hasPermission() }
+    val weather by vm.weather.collectAsState()
+    val focusActive by vm.focusActive.collectAsState()
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        vm.updateSettings { it.copy(weatherPromptDone = true, showWeather = granted || it.weatherCity.isNotBlank()) }
+        vm.refreshWeather(force = true)
+    }
+    val weatherText = weather?.takeIf { settings.showWeather }?.short
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -722,7 +779,8 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
     }
     val timePattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm"
     val time = now.format(DateTimeFormatter.ofPattern(timePattern))
-    val date = now.format(DateTimeFormatter.ofPattern(if (compact) "EEE, MMM d" else "EEEE, MMMM d"))
+    val dateOnly = now.format(DateTimeFormatter.ofPattern(if (compact) "EEE, MMM d" else "EEEE, MMMM d"))
+    val date = if (weatherText != null) "$dateOnly   \u00B7   $weatherText" else dateOnly
     val glance = remember(now) { atAGlance(context, timePattern) }
     val openClock = { context.startSafely(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
     val openCalendar = {
@@ -732,6 +790,7 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
     Column(modifier) {
         if (settings.dialClock) {
             DialClock(
+                weather = weatherText,
                 is24h = DateFormat.is24HourFormat(context),
                 onOpenClock = openClock,
                 onOpenCalendar = openCalendar,
@@ -774,6 +833,30 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
                 style = TextStyle(fontSize = 14.sp, shadow = ClockShadow),
                 modifier = Modifier.clickable(onClick = openClock),
             )
+        }
+
+        // Weather needs a location (or a city in Settings); offer it once.
+        if (settings.showWeather && weather == null && !settings.weatherPromptDone &&
+            settings.weatherCity.isBlank() && !vm.weatherRepo.hasLocationPermission()
+        ) {
+            Spacer(Modifier.height(8.dp))
+            GlanceChip(
+                "Show the weather",
+                Icons.Outlined.WbSunny,
+                onClick = { locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
+                onDismiss = { vm.updateSettings { it.copy(weatherPromptDone = true) } },
+            )
+        }
+        if (focusActive) {
+            Spacer(Modifier.height(8.dp))
+            if (settings.focusOn) {
+                GlanceChip("Focus on \u00B7 Turn off", Icons.Outlined.DoNotDisturbOn, onClick = { vm.setFocus(false) })
+            } else {
+                GlanceChip(
+                    "Focus until ${formatMinute(settings.workEnd, DateFormat.is24HourFormat(context))}",
+                    Icons.Outlined.DoNotDisturbOn,
+                )
+            }
         }
 
         // Next meeting, then work status.
@@ -980,6 +1063,22 @@ private fun AppDrawer(
     }
     val filtered = remember(tabApps, query) { searchApps(tabApps, query) }
 
+    // Search everything: a quick answer (math or units), then apps, contacts and phone settings.
+    val context = LocalContext.current
+    val minimal = settings.minimalMode
+    val answer = remember(query) { calculate(query) ?: convertUnits(query) }
+    val settingsHits = remember(query) { searchSettings(query) }
+    var contactsGranted by remember { mutableStateOf(hasContactsPermission(context)) }
+    val contactHits by produceState(emptyList<ContactHit>(), query, contactsGranted) {
+        value = if (query.isBlank()) emptyList()
+        else withContext(Dispatchers.IO) { searchContacts(context, query) }
+    }
+    val contactsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        contactsGranted = granted
+        vm.updateSettings { it.copy(contactsPromptDone = true) }
+    }
+    val hiddenCount = settings.hidden.size
+
     // Most-opened apps on top.
     val byKey = remember(apps) { apps.associateBy { it.key } }
     val suggested = remember(byKey, usage, showTabs, workTab, settings.suggestions, workKeys) {
@@ -1076,6 +1175,23 @@ private fun AppDrawer(
                         contentDescription = "Clear search",
                         modifier = Modifier.clip(CircleShape).clickable { query = "" }.padding(8.dp),
                     )
+                } else if (hiddenCount > 0) {
+                    // Hidden apps, behind fingerprint / screen lock.
+                    Icon(
+                        Icons.Outlined.Lock,
+                        contentDescription = "Hidden apps",
+                        modifier = Modifier.clip(CircleShape).clickable {
+                            val open = {
+                                vm.setHiddenUnlocked(true)
+                                vm.showOverlay(LauncherViewModel.Overlay.HiddenApps)
+                            }
+                            if (settings.lockHidden && !vm.hiddenUnlocked.value) {
+                                unlockWithBiometrics(context, "Hidden apps", open)
+                            } else {
+                                open()
+                            }
+                        }.padding(8.dp),
+                    )
                 }
             },
             singleLine = true,
@@ -1089,7 +1205,14 @@ private fun AppDrawer(
                 unfocusedTextColor = Color.White,
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { filtered.firstOrNull()?.let(onLaunch) }),
+            keyboardActions = KeyboardActions(onGo = {
+                val first = filtered.firstOrNull()
+                when {
+                    first != null -> onLaunch(first)
+                    settingsHits.isNotEmpty() -> openSettingsPage(context, settingsHits.first())
+                    contactHits.isNotEmpty() -> context.startSafely(Intent(Intent.ACTION_VIEW, contactHits.first().lookupUri))
+                }
+            }),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
@@ -1131,7 +1254,7 @@ private fun AppDrawer(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val showScroller = letterIndex.size > 5
             LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
+                columns = GridCells.Fixed(if (minimal) 1 else 5),
                 state = grid,
                 contentPadding = PaddingValues(start = 12.dp, end = if (showScroller) 30.dp else 12.dp, bottom = 32.dp),
                 modifier = Modifier
@@ -1139,7 +1262,12 @@ private fun AppDrawer(
                     .nestedScroll(pullToClose)
                     .navigationBarsPadding(),
             ) {
-                if (showSuggestions) {
+                if (answer != null) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "answer") {
+                        AnswerCard(query = query, answer = answer)
+                    }
+                }
+                if (showSuggestions && !minimal) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "suggested") {
                         Row(Modifier.fillMaxWidth()) {
                             suggested.forEach { app ->
@@ -1161,7 +1289,33 @@ private fun AppDrawer(
                     }
                 }
                 items(filtered, key = { it.key }) { app ->
-                    DrawerAppIcon(app, vm, drag, dockKeys, onLaunch, close, onDrop)
+                    if (minimal) MinimalAppRow(app, vm, dockKeys, onLaunch, fontSize = 22.sp)
+                    else DrawerAppIcon(app, vm, drag, dockKeys, onLaunch, close, onDrop)
+                }
+                if (query.isNotBlank()) {
+                    if (contactHits.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "contacts-h") { ResultHeader("Contacts") }
+                        items(contactHits, key = { "c-" + it.lookupUri }, span = { GridItemSpan(maxLineSpan) }) { c ->
+                            ContactRow(c)
+                        }
+                    } else if (!contactsGranted && !settings.contactsPromptDone && query.trim().length >= 2) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "contacts-ask") {
+                            ResultRow(Icons.Outlined.Person, "Search your contacts too", "Tap to allow", onDismiss = {
+                                vm.updateSettings { it.copy(contactsPromptDone = true) }
+                            }) { contactsPermission.launch(Manifest.permission.READ_CONTACTS) }
+                        }
+                    }
+                    if (settingsHits.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "settings-h") { ResultHeader("Settings") }
+                        items(settingsHits, key = { "s-" + it.label }, span = { GridItemSpan(maxLineSpan) }) { p ->
+                            ResultRow(Icons.Outlined.Settings, p.label, "Phone settings") { openSettingsPage(context, p) }
+                        }
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "web") {
+                        ResultRow(Icons.Filled.Search, "Search the web for \u201C${query.trim()}\u201D", null) {
+                            context.startSafely(Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, query.trim()))
+                        }
+                    }
                 }
                 if (showTabs && workTab && filtered.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "work-empty") {
@@ -1321,6 +1475,7 @@ private fun DrawerAppIcon(
             MenuAction(if (onWorkTab) "Remove from Work tab" else "Add to Work tab", enabled = !app.isWork) {
                 vm.setWorkApp(app.key, !onWorkTab)
             },
+            MenuAction("Hide app") { vm.hideApp(app) },
             MenuAction("App info") { vm.openAppInfo(app) },
             MenuAction("Uninstall") {
                 context.startSafely(Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}")))

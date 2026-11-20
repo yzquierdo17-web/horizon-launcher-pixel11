@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        vm.onStop() // locks hidden apps again
         runCatching { vm.widgetHost.stopListening() }
     }
 

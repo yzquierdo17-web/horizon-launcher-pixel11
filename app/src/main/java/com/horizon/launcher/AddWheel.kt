@@ -40,6 +40,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.twotone.Apps
+import androidx.compose.material.icons.twotone.DoNotDisturbOn
+import androidx.compose.material.icons.twotone.Star
 import androidx.compose.material.icons.twotone.Palette
 import androidx.compose.material.icons.twotone.Settings
 import androidx.compose.material.icons.twotone.Wallpaper
@@ -95,6 +97,8 @@ private val WheelOptions = listOf(
     WheelOption("App", "Add an app", Icons.TwoTone.Apps),
     WheelOption("Icons", "Icon style", Icons.TwoTone.Palette),
     WheelOption("Wallpaper", "Change wallpaper", Icons.TwoTone.Wallpaper),
+    WheelOption("Focus", "Focus mode", Icons.TwoTone.DoNotDisturbOn),
+    WheelOption("Favourites", "Minimal mode favourites", Icons.TwoTone.Star),
     WheelOption("Settings", "Horizon settings", Icons.TwoTone.Settings),
 )
 
@@ -135,7 +139,14 @@ fun AddWheel(vm: LauncherViewModel, onDismiss: () -> Unit) {
             1 -> vm.showOverlay(LauncherViewModel.Overlay.AddApp)
             2 -> vm.showOverlay(LauncherViewModel.Overlay.IconStyle)
             3 -> context.startSafely(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
-            4 -> vm.openSettings(true)
+            4 -> {
+                val on = !vm.settings.value.focusOn
+                vm.setFocus(on)
+                vm.toast(if (on) "Focus is on" else "Focus is off")
+                if (on && vm.settings.value.focusApps.isEmpty()) vm.showOverlay(LauncherViewModel.Overlay.FocusApps)
+            }
+            5 -> vm.showOverlay(LauncherViewModel.Overlay.Favorites)
+            6 -> vm.openSettings(true)
         }
     }
 
@@ -264,7 +275,11 @@ fun AddWheel(vm: LauncherViewModel, onDismiss: () -> Unit) {
                     Icon(WheelOptions[selected].icon, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(30.dp))
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        if (selected <= 1) "Add" else "Open",
+                        when (selected) {
+                            0, 1 -> "Add"
+                            4 -> if (LocalSettings.current.focusOn) "Turn off" else "Turn on"
+                            else -> "Open"
+                        },
                         color = MaterialTheme.colorScheme.onPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
@@ -477,4 +492,84 @@ private fun SearchBox(query: String, onChange: (String) -> Unit) {
         ),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
     )
+}
+
+
+/** Your hidden apps, shown only after fingerprint / screen lock. Tap to open; Unhide to bring back. */
+@Composable
+fun HiddenAppsScreen(vm: LauncherViewModel, hidden: List<AppEntry>, onDone: () -> Unit) {
+    OverlayColumn {
+        OverlayHeader("Hidden apps", "Not shown in the drawer or search", onDone)
+        if (hidden.isEmpty()) {
+            Hint("Nothing hidden. Long-press an app in the drawer and choose Hide app.")
+        }
+        LazyColumn(
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 32.dp),
+            modifier = Modifier.weight(1f).navigationBarsPadding(),
+        ) {
+            items(hidden, key = { "hid-" + it.key }) { app ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { vm.launch(app) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppImage(app, 40.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Text(app.label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text(
+                        "Unhide",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { vm.unhideApp(app) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Tick apps on or off (used for Focus mode's distracting apps and minimal mode's favourites). */
+@Composable
+fun AppChecklistScreen(
+    title: String,
+    subtitle: String,
+    apps: List<AppEntry>,
+    selected: Set<String>,
+    onToggle: (AppEntry, Boolean) -> Unit,
+    onDone: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val shown = remember(apps, query) { searchApps(apps, query) }
+    OverlayColumn {
+        OverlayHeader(title, "$subtitle · ${selected.count { k -> apps.any { it.key == k } }} chosen", onDone)
+        SearchBox(query) { query = it }
+        LazyColumn(
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 32.dp),
+            modifier = Modifier.weight(1f).navigationBarsPadding(),
+        ) {
+            items(shown, key = { "chk-" + it.key }) { app ->
+                val on = app.key in selected
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onToggle(app, !on) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppImage(app, 40.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Text(app.label, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.Checkbox(checked = on, onCheckedChange = { onToggle(app, it) })
+                }
+            }
+        }
+    }
 }

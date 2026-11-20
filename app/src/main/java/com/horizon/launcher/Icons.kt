@@ -67,6 +67,9 @@ data class MenuAction(
     val onClick: () -> Unit,
 )
 
+/** Apps greyed out right now because Focus mode is on (empty when Focus is off). */
+val LocalFocusKeys = androidx.compose.runtime.staticCompositionLocalOf<Set<String>> { emptySet() }
+
 /** Loads an app's shortcuts for its long-press menu; provided by the launcher screen. */
 val LocalAppShortcuts = androidx.compose.runtime.staticCompositionLocalOf<(AppEntry) -> List<MenuAction>> { { emptyList() } }
 
@@ -186,22 +189,23 @@ fun ItemMenu(expanded: Boolean, onDismiss: () -> Unit, actions: List<MenuAction>
 
 @Composable
 fun AppImage(app: AppEntry, size: Dp = scaledIconSize()) {
-    // Paused work apps: greyscale and faded, like Pixel.
-    val filter = remember(app.isPaused) {
-        if (app.isPaused) androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+    // Paused work apps and Focus-mode distractions: greyscale and faded, like Pixel.
+    val dimmed = app.isPaused || app.key in LocalFocusKeys.current
+    val filter = remember(dimmed) {
+        if (dimmed) androidx.compose.ui.graphics.ColorFilter.colorMatrix(
             androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) },
         ) else null
     }
     val settings = LocalSettings.current
     val badges by IslandHub.badges.collectAsState()
-    val count = if (settings.notificationDots && !app.isPaused) badges[IslandHub.badgeKey(app.packageName, app.user)] ?: 0 else 0
+    val count = if (settings.notificationDots && !dimmed) badges[IslandHub.badgeKey(app.packageName, app.user)] ?: 0 else 0
     Box(Modifier.size(size)) {
         Image(
             bitmap = app.icon,
             contentDescription = app.label,
             colorFilter = filter,
             filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-            modifier = Modifier.size(size).then(if (app.isPaused) Modifier.alpha(0.5f) else Modifier),
+            modifier = Modifier.size(size).then(if (dimmed) Modifier.alpha(0.5f) else Modifier),
         )
         if (count > 0) NotificationDot(count, settings.dotCounts, Modifier.align(Alignment.TopEnd))
     }

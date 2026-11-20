@@ -192,6 +192,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             applyWorkHours(cur)
         }
         meetingRefresh.value++
+        refreshWeather()
+    }
+
+    /** Horizon went to the background: lock the hidden apps again. */
+    fun onStop() {
+        _hiddenUnlocked.value = false
+        if (_overlay.value == Overlay.HiddenApps) _overlay.value = null
     }
 
     /**
@@ -210,6 +217,71 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshMeetings() { meetingRefresh.value++ }
+
+    // ---------- Weather ----------
+
+    val weatherRepo = WeatherRepository(app)
+    private val _weather = MutableStateFlow<Weather?>(null)
+    val weather: StateFlow<Weather?> = _weather.asStateFlow()
+    private var weatherFetchedAt = 0L
+    private var weatherKey = ""
+
+    /** Refreshes at most every 30 minutes, or right away when the city or units change. */
+    fun refreshWeather(force: Boolean = false) {
+        val s = _settings.value
+        if (!s.showWeather) { _weather.value = null; return }
+        val fahrenheit = when (s.weatherUnit) { "f" -> true; "c" -> false; else -> WeatherRepository.defaultFahrenheit() }
+        val key = s.weatherCity.trim() + "|" + fahrenheit
+        val stale = System.currentTimeMillis() - weatherFetchedAt > 30 * 60_000L
+        if (!force && !stale && key == weatherKey) return
+        if (s.weatherCity.isBlank() && !weatherRepo.hasLocationPermission()) return
+        weatherKey = key
+        weatherFetchedAt = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            val w = runCatching { weatherRepo.fetch(s.weatherCity, fahrenheit) }.getOrNull()
+            if (w != null) _weather.value = w else weatherFetchedAt = 0L // retry next time
+        }
+    }
+
+    // ---------- Focus ----------
+
+    /** On by hand, or automatically during work hours if you chose that. */
+    val focusActive: StateFlow<Boolean> = combine(settings, workTime) { s, w -> s.focusOn || (s.focusDuringWork && w) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    private var focusBypassKey: String? = null
+    private var focusBypassAt = 0L
+
+    /** First tap on a distracting app during Focus asks; a second tap within 4 s opens it. */
+    private fun focusAllows(app: AppEntry): Boolean {
+        if (!focusActive.value || app.key !in _settings.value.focusApps) return true
+        val now = System.currentTimeMillis()
+        if (focusBypassKey == app.key && now - focusBypassAt < 4000) {
+            focusBypassKey = null
+            return true
+        }
+        focusBypassKey = app.key
+        focusBypassAt = now
+        toast("Focus is on. Tap ${app.label} again to open it anyway")
+        return false
+    }
+
+    fun setFocus(on: Boolean) = updateSettings { it.copy(focusOn = on) }
+
+    // ---------- Hidden apps (locked) ----------
+
+    private val _hiddenUnlocked = MutableStateFlow(false)
+    /** True after fingerprint / screen lock; locks again when Horizon goes to the background. */
+    val hiddenUnlocked: StateFlow<Boolean> = _hiddenUnlocked.asStateFlow()
+    fun setHiddenUnlocked(v: Boolean) { _hiddenUnlocked.value = v }
+    /** Minimal mode's starting favourites: your dock, then apps on the first Home page (up to 7). */
+    fun defaultFavorites(): List<String> =
+        (_dock.value + _items.value.filter { it.page == 0 && it.type == TYPE_APP }.flatMap { it.apps })
+            .distinct()
+            .take(7)
+
+    fun hideApp(app: AppEntry) = updateSettings { it.copy(hidden = it.hidden + app.key) }
+    fun unhideApp(app: AppEntry) = updateSettings { it.copy(hidden = it.hidden - app.key) }
 
     /** Put an app on the Work tab, or take it off. Work-profile apps are always on Work. */
     fun setWorkApp(key: String, onWork: Boolean) =
@@ -299,6 +371,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             setWorkPaused(false)
             return
         }
+        if (!focusAllows(app)) return
         recordLaunch(app.key)
         runCatching { launcherApps.startMainActivity(app.component, app.user, sourceBounds, options) }
             .onFailure { runCatching { launcherApps.startMainActivity(app.component, app.user, null, null) } }
@@ -335,6 +408,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         _settings.value = new
         prefs.edit().putString(KEY_SETTINGS, new.toJson().toString()).apply()
         if (old.themedIcons != new.themedIcons || old.iconShape != new.iconShape || old.iconPack != new.iconPack) refresh()
+        if (old.showWeather != new.showWeather || old.weatherCity != new.weatherCity || old.weatherUnit != new.weatherUnit) {
+            refreshWeather(force = true)
+        }
     }
 
     fun exportLayout(): String = JSONObject()
@@ -409,7 +485,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Full-screen helpers opened from the add wheel (or Settings, for Icon style). */
-    enum class Overlay { Wheel, AddApp, IconStyle }
+    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites }
 
     private val _overlay = MutableStateFlow<Overlay?>(null)
     val overlay: StateFlow<Overlay?> = _overlay.asStateFlow()
