@@ -131,6 +131,37 @@ fun SettingsScreen(
                 ) { v -> vm.updateSettings { it.copy(dialClock = v == "dial", compactClock = v == "compact") } }
             }
             item {
+                ToggleRow(
+                    "Notification dots",
+                    if (IslandHub.hasAccess(context)) "Dot on apps with unread notifications"
+                    else "Needs notification access. Tap to allow",
+                    s.notificationDots && IslandHub.hasAccess(context),
+                ) { v ->
+                    if (v && !IslandHub.hasAccess(context)) {
+                        context.startSafely(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                    }
+                    vm.updateSettings { it.copy(notificationDots = v) }
+                }
+            }
+            if (s.notificationDots) item {
+                ToggleRow("Show numbers", "Show how many notifications instead of a dot", s.dotCounts) { v ->
+                    vm.updateSettings { it.copy(dotCounts = v) }
+                }
+            }
+            item {
+                ToggleRow(
+                    "Double-tap to lock",
+                    if (IslandOverlayService.isEnabled(context)) "Double-tap empty space on Home to turn the screen off"
+                    else "Needs Horizon turned on in Accessibility (the same helper as the Dynamic Island)",
+                    s.doubleTapLock,
+                ) { v ->
+                    vm.updateSettings { it.copy(doubleTapLock = v) }
+                    if (v && !IslandOverlayService.isEnabled(context)) {
+                        context.startSafely(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }
+                }
+            }
+            item {
                 ActionRow("Dial on lock screen", "Set the Horizon Dial live wallpaper. Choose Lock screen when Android asks") {
                     // Straight to the Horizon Dial preview; if this phone doesn't support that, the live wallpaper list.
                     runCatching {
@@ -401,7 +432,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.11"
+    const val NAME = "0.12"
 }
 
 @Composable

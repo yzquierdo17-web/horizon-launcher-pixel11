@@ -175,6 +175,12 @@ data class LauncherSettings(
     val iconShape: String = "system",
     /** Package of the chosen icon pack, or "" for none. */
     val iconPack: String = "",
+    /** Dot on app icons with unread notifications (needs notification access). */
+    val notificationDots: Boolean = true,
+    /** Show the number of notifications instead of a plain dot. */
+    val dotCounts: Boolean = false,
+    /** Double-tap empty space on Home to lock the screen (uses the island helper). */
+    val doubleTapLock: Boolean = true,
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -203,6 +209,9 @@ data class LauncherSettings(
         .put("workApps", JSONArray(workApps.toList()))
         .put("iconShape", iconShape)
         .put("iconPack", iconPack)
+        .put("dots", notificationDots)
+        .put("dotCounts", dotCounts)
+        .put("dtLock", doubleTapLock)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -230,6 +239,9 @@ data class LauncherSettings(
                 workApps = (0 until wa.length()).map { wa.getString(it) }.toSet(),
                 iconShape = o.optString("iconShape", "system"),
                 iconPack = o.optString("iconPack", ""),
+                notificationDots = o.optBoolean("dots", true),
+                dotCounts = o.optBoolean("dotCounts", false),
+                doubleTapLock = o.optBoolean("dtLock", true),
             )
         }
     }

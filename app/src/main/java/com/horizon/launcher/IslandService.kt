@@ -100,6 +100,12 @@ object IslandHub {
     val peek: StateFlow<Peek?> = _peek.asStateFlow()
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
 
+    /** Unread notifications per app ("package#userId"), for the dots on app icons. */
+    internal val _badges = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val badges: StateFlow<Map<String, Int>> = _badges.asStateFlow()
+
+    fun badgeKey(packageName: String, user: android.os.UserHandle) = packageName + "#" + user.hashCode()
+
     fun hasAccess(context: Context): Boolean =
         NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
 
@@ -145,10 +151,36 @@ class IslandListener : NotificationListenerService() {
             watchControllers(manager.getActiveSessions(me))
         }
         runCatching { activeNotifications?.forEach { readOngoing(it) } }
+        refreshBadges()
+    }
+
+    override fun onNotificationRankingUpdate(rankingMap: RankingMap?) {
+        refreshBadges()
+    }
+
+    /**
+     * Counts dismissable notifications per app, skipping ongoing ones (music, calls, timers),
+     * group summaries, and apps whose notification channel turned dots off.
+     */
+    private fun refreshBadges() {
+        runCatching {
+            val ranking = Ranking()
+            val rankings = currentRanking
+            val counts = HashMap<String, Int>()
+            activeNotifications?.forEach { sbn ->
+                if (sbn.isOngoing || !sbn.isClearable) return@forEach
+                if ((sbn.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY) != 0) return@forEach
+                if (rankings != null && rankings.getRanking(sbn.key, ranking) && !ranking.canShowBadge()) return@forEach
+                val key = IslandHub.badgeKey(sbn.packageName, sbn.user)
+                counts[key] = (counts[key] ?: 0) + 1
+            }
+            IslandHub._badges.value = counts
+        }
     }
 
     override fun onListenerDisconnected() {
         IslandHub._connected.value = false
+        IslandHub._badges.value = emptyMap()
         runCatching { sessions?.removeOnActiveSessionsChangedListener(sessionsChanged) }
         watched.forEach { (c, cb) -> runCatching { c.unregisterCallback(cb) } }
         watched.clear()
@@ -162,6 +194,7 @@ class IslandListener : NotificationListenerService() {
             readOngoing(sbn)
             maybePeek(sbn)
         }
+        refreshBadges()
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
@@ -169,6 +202,7 @@ class IslandListener : NotificationListenerService() {
         if (IslandHub._call.value?.key == sbn.key) IslandHub._call.value = null
         if (IslandHub._timer.value?.key == sbn.key) IslandHub._timer.value = null
         if (IslandHub._peek.value?.key == sbn.key) IslandHub._peek.value = null
+        refreshBadges()
     }
 
     // ---------- Calls and timers (ongoing notifications) ----------

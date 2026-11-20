@@ -358,6 +358,28 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         true
     }.getOrDefault(false)
 
+    /**
+     * The app's shortcuts (Compose, Navigate home…) for its long-press menu, as Pixel shows them.
+     * Android only gives these to the default Home app.
+     */
+    fun shortcutsFor(app: AppEntry): List<MenuAction> = runCatching {
+        if (!launcherApps.hasShortcutHostPermission()) return emptyList()
+        val query = LauncherApps.ShortcutQuery()
+            .setPackage(app.packageName)
+            .setActivity(app.component)
+            .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST or LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC)
+        launcherApps.getShortcuts(query, app.user).orEmpty()
+            .filter { it.isEnabled }
+            .sortedWith(compareBy<android.content.pm.ShortcutInfo> { if (it.isDeclaredInManifest) 0 else 1 }.thenBy { it.rank })
+            .take(4)
+            .map { info ->
+                MenuAction((info.shortLabel ?: info.longLabel ?: "Shortcut").toString(), isShortcut = true) {
+                    runCatching { launcherApps.startShortcut(info, null, null) }
+                        .onFailure { toast("That shortcut isn't available") }
+                }
+            }
+    }.getOrDefault(emptyList())
+
     fun openAppInfo(app: AppEntry) {
         runCatching { launcherApps.startAppDetailsActivity(app.component, app.user, null, null) }
     }
@@ -426,7 +448,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun nextId(items: List<HomeItem>) = (items.maxOfOrNull { it.id } ?: 0L) + 1L
 
-    private fun toast(text: String) {
+    fun toast(text: String) {
         Toast.makeText(getApplication(), text, Toast.LENGTH_SHORT).show()
     }
 

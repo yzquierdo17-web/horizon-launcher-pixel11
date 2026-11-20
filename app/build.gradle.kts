@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Permanent signing key, provided by the build server (GitHub secrets). Without it, builds use a
+// temporary debug key, and Android won't install them over a copy signed with a different key.
+val horizonKeystore = System.getenv("HORIZON_KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
+
 android {
     namespace = "com.horizon.launcher"
     compileSdk = 35
@@ -12,13 +16,28 @@ android {
         applicationId = "com.horizon.launcher"
         minSdk = 29
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.11"
+        versionCode = 12
+        versionName = "0.12"
+    }
+
+    signingConfigs {
+        if (horizonKeystore != null) {
+            create("horizon") {
+                storeFile = horizonKeystore
+                storePassword = System.getenv("HORIZON_KEY_PASSWORD")
+                keyAlias = "horizon"
+                keyPassword = System.getenv("HORIZON_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfigs.findByName("horizon")?.let { signingConfig = it }
+        }
         release {
             isMinifyEnabled = false
+            signingConfigs.findByName("horizon")?.let { signingConfig = it }
         }
     }
 

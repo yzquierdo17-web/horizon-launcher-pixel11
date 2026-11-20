@@ -83,6 +83,7 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         IslandPrefs.load(this)
         IslandHub._overlay.value = true
         wm = getSystemService(WindowManager::class.java)
@@ -113,6 +114,7 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         runCatching { unregisterReceiver(screenOff) }
         IslandHub._overlay.value = false
         root?.let { v -> runCatching { wm?.removeView(v) } }
@@ -264,6 +266,12 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
     }
 
     companion object {
+        @Volatile private var instance: IslandOverlayService? = null
+
+        /** Turns the screen off and locks, like the power button. False if the helper isn't on. */
+        fun lockScreen(): Boolean =
+            instance?.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) == true
+
         private const val BASE_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or

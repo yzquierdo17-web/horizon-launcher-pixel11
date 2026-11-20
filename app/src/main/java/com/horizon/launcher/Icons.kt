@@ -1,5 +1,13 @@
 package com.horizon.launcher
 
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.produceState
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -51,7 +59,16 @@ val LocalSettings = compositionLocalOf { LauncherSettings() }
 fun scaledIconSize(): Dp = IconSize * LocalSettings.current.iconScale
 val LabelShadow = Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 1.5f), 6f)
 
-data class MenuAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)
+data class MenuAction(
+    val label: String,
+    val enabled: Boolean = true,
+    /** App shortcut (shown first, with a bolt). */
+    val isShortcut: Boolean = false,
+    val onClick: () -> Unit,
+)
+
+/** Loads an app's shortcuts for its long-press menu; provided by the launcher screen. */
+val LocalAppShortcuts = androidx.compose.runtime.staticCompositionLocalOf<(AppEntry) -> List<MenuAction>> { { emptyList() } }
 
 /**
  * An icon that can be tapped, long-pressed for a menu, or long-pressed and dragged.
@@ -67,10 +84,19 @@ fun LauncherIcon(
     onDragStarted: () -> Unit = {},
     onDrop: () -> Unit,
     labelShadow: Boolean = false,
+    /** Set for app icons, so the menu can show the app's shortcuts. */
+    app: AppEntry? = null,
     icon: @Composable () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
     var menuOpen by remember { mutableStateOf(false) }
+    // Shortcuts are only looked up when the menu opens, so scrolling the drawer stays fast.
+    val loadShortcuts = LocalAppShortcuts.current
+    val shortcuts by produceState(emptyList<MenuAction>(), menuOpen, app?.key) {
+        value = if (menuOpen && app != null) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { loadShortcuts(app) }
+        } else emptyList()
+    }
     var origin by remember { mutableStateOf(Offset.Zero) }
     var bounds by remember { mutableStateOf(Rect.Zero) }
     val iconSize = scaledIconSize()
@@ -132,16 +158,22 @@ fun LauncherIcon(
                 )
             }
         }
-        ItemMenu(expanded = menuOpen, onDismiss = { menuOpen = false }, actions = menu)
+        ItemMenu(expanded = menuOpen, onDismiss = { menuOpen = false }, actions = shortcuts + menu)
     }
 }
 
 @Composable
 fun ItemMenu(expanded: Boolean, onDismiss: () -> Unit, actions: List<MenuAction>) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        actions.forEach { action ->
+        actions.forEachIndexed { i, action ->
+            if (i > 0 && actions[i - 1].isShortcut && !action.isShortcut) {
+                androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            }
             DropdownMenuItem(
                 text = { Text(action.label) },
+                leadingIcon = if (action.isShortcut) {
+                    { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.Bolt, contentDescription = null) }
+                } else null,
                 enabled = action.enabled,
                 onClick = {
                     onDismiss()
@@ -160,12 +192,50 @@ fun AppImage(app: AppEntry, size: Dp = scaledIconSize()) {
             androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) },
         ) else null
     }
-    Image(
-        bitmap = app.icon,
-        contentDescription = app.label,
-        colorFilter = filter,
-        modifier = Modifier.size(size).then(if (app.isPaused) Modifier.alpha(0.5f) else Modifier),
-    )
+    val settings = LocalSettings.current
+    val badges by IslandHub.badges.collectAsState()
+    val count = if (settings.notificationDots && !app.isPaused) badges[IslandHub.badgeKey(app.packageName, app.user)] ?: 0 else 0
+    Box(Modifier.size(size)) {
+        Image(
+            bitmap = app.icon,
+            contentDescription = app.label,
+            colorFilter = filter,
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+            modifier = Modifier.size(size).then(if (app.isPaused) Modifier.alpha(0.5f) else Modifier),
+        )
+        if (count > 0) NotificationDot(count, settings.dotCounts, Modifier.align(Alignment.TopEnd))
+    }
+}
+
+/** Pixel-style dot (or a small count) on an icon with unread notifications. */
+@Composable
+private fun NotificationDot(count: Int, showCount: Boolean, modifier: Modifier) {
+    val fill = androidx.compose.material3.MaterialTheme.colorScheme.primary
+    val ink = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
+    if (showCount) {
+        Box(
+            modifier
+                .offset(x = 4.dp, y = (-4).dp)
+                .height(18.dp)
+                .widthIn(min = 18.dp)
+                .clip(CircleShape)
+                .background(fill)
+                .border(1.5.dp, Color(0xFF0D1016), CircleShape)
+                .padding(horizontal = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(if (count > 99) "99+" else count.toString(), color = ink, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        }
+    } else {
+        Box(
+            modifier
+                .offset(x = 1.dp, y = (-1).dp)
+                .size(12.dp)
+                .clip(CircleShape)
+                .background(fill)
+                .border(1.5.dp, Color(0xFF0D1016), CircleShape),
+        )
+    }
 }
 
 /** 2x2 preview of the first four apps in a folder. */

@@ -146,7 +146,8 @@ fun LauncherScreen(
     onRestore: () -> Unit,
 ) {
     val settings by vm.settings.collectAsState()
-    CompositionLocalProvider(LocalSettings provides settings) {
+    val shortcuts = remember(vm) { { app: AppEntry -> vm.shortcutsFor(app) } }
+    CompositionLocalProvider(LocalSettings provides settings, LocalAppShortcuts provides shortcuts) {
         LauncherContent(vm, settings, onAddWidget, onBlur, onBackup, onRestore)
     }
 }
@@ -463,6 +464,8 @@ private fun HomeScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val settings = LocalSettings.current
+    // Read inside the long-lived gesture handler, so keep it current.
+    val doubleTapLockOn by rememberUpdatedState(settings.doubleTapLock)
     var dragTotal by remember { mutableStateOf(0f) }
     val tracker = remember { VelocityTracker() }
     val swipe by rememberUpdatedState(onSwipe)
@@ -492,12 +495,23 @@ private fun HomeScreen(
                 }
             }
             .pointerInput(Unit) {
-                detectTapGestures(onLongPress = {
-                    if (!drag.itemPressed) {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        vm.showOverlay(LauncherViewModel.Overlay.Wheel)
-                    }
-                })
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (doubleTapLockOn && !drag.itemPressed) {
+                            if (!IslandOverlayService.lockScreen()) {
+                                // The lock uses the island's helper; point the user to switch it on.
+                                vm.toast("Turn on Horizon in Accessibility to use double-tap to lock")
+                                context.startSafely(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            }
+                        }
+                    },
+                    onLongPress = {
+                        if (!drag.itemPressed) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            vm.showOverlay(LauncherViewModel.Overlay.Wheel)
+                        }
+                    },
+                )
             },
     ) {
         // Soft scrim at the bottom so the dock stays readable on bright wallpapers
@@ -617,6 +631,7 @@ private fun HomePage(
                             val app = item.apps.firstOrNull()?.let { index[it] }
                             if (app != null) {
                                 LauncherIcon(
+                                    app = app,
                                     label = if (LocalSettings.current.homeLabels) app.label else null,
                                     drag = drag,
                                     payload = DragPayload.FromHome(item.id),
@@ -900,6 +915,7 @@ private fun Dock(
         keys.forEachIndexed { i, key ->
             val app = index[key] ?: return@forEachIndexed
             LauncherIcon(
+                app = app,
                 label = null,
                 drag = drag,
                 payload = DragPayload.FromDock(i),
@@ -1291,6 +1307,7 @@ private fun DrawerAppIcon(
     val inDock = app.key in dockKeys
     val onWorkTab = app.isWork || app.key in LocalSettings.current.workApps
     LauncherIcon(
+        app = app,
         label = app.label,
         drag = drag,
         payload = DragPayload.FromDrawer(app.key),

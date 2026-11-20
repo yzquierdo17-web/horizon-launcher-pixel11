@@ -16,6 +16,18 @@ A clean, minimal home screen for the Google Pixel 11 Pro XL, built with Kotlin a
 - Colors follow your wallpaper (Material You)
 - Pull down at the top of the drawer, or press Back, to close it
 
+### Everyday
+- **Notification dots** on app icons with unread notifications, or the number if you prefer (Settings → Look). It uses the same notification access as the Dynamic Island, and it respects apps' own "no dots" settings and skips ongoing ones like music and calls.
+- **Double-tap to lock:** double-tap empty space on Home to turn the screen off. It uses the island's Accessibility helper, so turn Horizon on in Settings → Accessibility once.
+- **App shortcuts** at the top of an icon's long-press menu (Gmail → Compose, Maps → Navigate home…), like Pixel. Android only gives these to the default Home app.
+
+### Updates that keep your layout
+Builds are signed with a permanent key once two repository secrets are set (Settings → Secrets and variables → Actions):
+- `HORIZON_KEYSTORE`: the base64 keystore
+- `HORIZON_KEY_PASSWORD`: its password
+
+After that, every new APK installs over the last one. Without them, builds fall back to a temporary key, and you may need to uninstall first.
+
 ### Dial clock
 - **Settings → Look → Clock → Dial:** a watch-bezel clock. The big hour sits on the left, and a minute scale and a seconds scale turn smoothly so the current minute and second line up in a pill, with the date in small spaced capitals beside it. Tap the dial for Clock, or the date for Calendar. It redraws about 30 times a second and stops when Home isn't on screen.
 - **On your lock screen:** Settings → Look → **Dial on lock screen** opens the *Horizon Dial* live wallpaper. Tap **Set wallpaper** and choose **Lock screen**. It shows the same dial with smooth seconds on a dark charcoal background, plus your battery level, and only animates while the screen is on. Pixel's own lock-screen clock always stays on top; to make it less noticeable, pick a small clock style in Wallpaper & style → Lock screen.

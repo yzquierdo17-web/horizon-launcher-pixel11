@@ -86,6 +86,7 @@ fun FolderOverlay(
                                 Spacer(Modifier.weight(1f))
                             } else {
                                 LauncherIcon(
+                                    app = app,
                                     label = app.label,
                                     drag = drag,
                                     payload = DragPayload.FromFolder(folder.id, i),
