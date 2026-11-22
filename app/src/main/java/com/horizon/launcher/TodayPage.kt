@@ -46,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -163,6 +164,11 @@ fun TodayPage(
         value = withContext(Dispatchers.IO) { vm.calendar.eventsToday() }
     }
     val battery = rememberBattery()
+    val settings by vm.settings.collectAsState()
+    val news by vm.news.collectAsState()
+    val newsLoading by vm.newsLoading.collectAsState()
+    val newsUi = remember { NewsUiState() }
+    LaunchedEffect(Unit) { vm.refreshNews() }
     val unread = remember(badges, apps) {
         val byBadge = apps.associateBy { IslandHub.badgeKey(it.packageName, it.user) }
         badges.entries.mapNotNull { (k, n) -> byBadge[k]?.let { it to n } }
@@ -337,6 +343,8 @@ fun TodayPage(
                     }
                 }
             }
+
+            newsSection(vm, settings, news, newsLoading, newsUi)
 
             item {
                 Text(

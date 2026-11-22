@@ -193,6 +193,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
         meetingRefresh.value++
         refreshWeather()
+        refreshNews()
         // Back from Android's install screen without updating: offer it again.
         if (_update.value is UpdateState.Installing) {
             _update.value = UpdateState.Idle
@@ -288,6 +289,43 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             val w = runCatching { weatherRepo.fetch(s.weatherCity, fahrenheit) }.getOrNull()
             if (w != null) _weather.value = w else weatherFetchedAt = 0L // retry next time
         }
+    }
+
+    // ---------- News ----------
+
+    val newsRepo = NewsRepository(app)
+    private val _news = MutableStateFlow<List<NewsStory>>(emptyList())
+    val news: StateFlow<List<NewsStory>> = _news.asStateFlow()
+    private val _newsLoading = MutableStateFlow(false)
+    val newsLoading: StateFlow<Boolean> = _newsLoading.asStateFlow()
+    private var newsFetchedAt = 0L
+    private var newsKey = ""
+
+    /** Refreshes at most every 30 minutes, or right away when your topics or feeds change. */
+    fun refreshNews(force: Boolean = false) {
+        val s = _settings.value
+        if (!s.showNews) { _news.value = emptyList(); newsKey = ""; return }
+        val key = s.newsTopics.sorted().joinToString() + "|" + s.newsFeeds.joinToString()
+        val stale = System.currentTimeMillis() - newsFetchedAt > 30 * 60_000L
+        if (!force && !stale && key == newsKey) {
+            _news.value = _news.value.filter { it.source !in s.newsHidden }
+            return
+        }
+        if (_newsLoading.value) return
+        newsKey = key
+        newsFetchedAt = System.currentTimeMillis()
+        _newsLoading.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = runCatching { newsRepo.load(s.newsTopics, s.newsFeeds, s.newsHidden) }.getOrDefault(emptyList())
+            if (list.isNotEmpty()) _news.value = list else newsFetchedAt = 0L // retry next time
+            _newsLoading.value = false
+        }
+    }
+
+    fun hideNewsSource(source: String) {
+        updateSettings { it.copy(newsHidden = it.newsHidden + source) }
+        _news.value = _news.value.filter { it.source != source }
+        toast("Stories from $source hidden")
     }
 
     // ---------- Focus ----------
@@ -476,6 +514,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (old.themedIcons != new.themedIcons || old.iconShape != new.iconShape || old.iconPack != new.iconPack) refresh()
         if (old.showWeather != new.showWeather || old.weatherCity != new.weatherCity || old.weatherUnit != new.weatherUnit) {
             refreshWeather(force = true)
+        }
+        if (old.showNews != new.showNews || old.newsTopics != new.newsTopics || old.newsFeeds != new.newsFeeds) {
+            refreshNews(force = true)
         }
     }
 

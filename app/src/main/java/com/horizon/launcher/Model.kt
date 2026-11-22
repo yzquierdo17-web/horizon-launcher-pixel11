@@ -212,6 +212,16 @@ data class LauncherSettings(
     val clockFace: String = "large",
     /** App label size: "small", "medium" or "large". */
     val labelSize: String = "medium",
+    /** News section on the Today page. */
+    val showNews: Boolean = true,
+    /** NewsTopic ids. */
+    val newsTopics: Set<String> = setOf("top", "tech"),
+    /** Extra RSS or Atom feed addresses. */
+    val newsFeeds: List<String> = emptyList(),
+    /** Sources you chose to hide. */
+    val newsHidden: Set<String> = emptySet(),
+    /** Show pictures on story cards. */
+    val newsImages: Boolean = true,
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -259,6 +269,11 @@ data class LauncherSettings(
         .put("parallax", parallax)
         .put("clockFace", clockFace)
         .put("labelSize", labelSize)
+        .put("news", showNews)
+        .put("newsTopics", JSONArray(newsTopics.toList()))
+        .put("newsFeeds", JSONArray(newsFeeds))
+        .put("newsHidden", JSONArray(newsHidden.toList()))
+        .put("newsImages", newsImages)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -313,6 +328,11 @@ data class LauncherSettings(
                     },
                 ),
                 labelSize = o.optString("labelSize", "medium"),
+                showNews = o.optBoolean("news", true),
+                newsTopics = o.optJSONArray("newsTopics")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: setOf("top", "tech"),
+                newsFeeds = o.optJSONArray("newsFeeds")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
+                newsHidden = o.optJSONArray("newsHidden")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet(),
+                newsImages = o.optBoolean("newsImages", true),
             )
         }
     }

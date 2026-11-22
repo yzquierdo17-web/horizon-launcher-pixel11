@@ -439,6 +439,66 @@ fun SettingsScreen(
                 }
             }
 
+            item { Section("News") }
+            item {
+                ToggleRow("News on the Today page", "Headlines from Google News for your country, plus feeds you add", s.showNews) { v ->
+                    vm.updateSettings { it.copy(showNews = v) }
+                }
+            }
+            if (s.showNews) {
+                item {
+                    ToggleRow("Pictures", "Show a picture with each story", s.newsImages) { v ->
+                        vm.updateSettings { it.copy(newsImages = v) }
+                    }
+                }
+                NewsTopic.entries.forEach { t ->
+                    item(key = "topic-${t.id}") {
+                        ToggleRow(t.label, null, t.id in s.newsTopics) { on ->
+                            vm.updateSettings { it.copy(newsTopics = if (on) it.newsTopics + t.id else it.newsTopics - t.id) }
+                        }
+                    }
+                }
+                s.newsFeeds.forEach { url ->
+                    item(key = "feed-$url") {
+                        ActionRow(NewsRepository.siteOf(url) ?: url, "Your feed · tap to remove") {
+                            vm.updateSettings { it.copy(newsFeeds = it.newsFeeds - url) }
+                        }
+                    }
+                }
+                item {
+                    var feed by remember { mutableStateOf("") }
+                    androidx.compose.material3.OutlinedTextField(
+                        value = feed,
+                        onValueChange = { feed = it },
+                        singleLine = true,
+                        label = { Text("Add a site's RSS feed address") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                            var u = feed.trim()
+                            if (u.isNotEmpty()) {
+                                if (!u.startsWith("http")) u = "https://$u"
+                                vm.updateSettings { if (u in it.newsFeeds) it else it.copy(newsFeeds = it.newsFeeds + u) }
+                                feed = ""
+                            }
+                        }),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = LocalInk.current,
+                            unfocusedTextColor = LocalInk.current,
+                        ),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+                if (s.newsHidden.isNotEmpty()) item {
+                    ActionRow(
+                        "Show hidden sources again",
+                        "Hidden: " + s.newsHidden.sorted().joinToString(", "),
+                    ) { vm.updateSettings { it.copy(newsHidden = emptySet()) } }
+                }
+            }
+
             item { Section("Work") }
             item {
                 ToggleRow(
@@ -582,7 +642,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.17"
+    const val NAME = "0.18"
 }
 
 @Composable
