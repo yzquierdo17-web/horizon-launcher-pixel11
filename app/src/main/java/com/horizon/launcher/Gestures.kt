@@ -100,7 +100,7 @@ fun runGesture(context: Context, vm: LauncherViewModel, id: String) {
         }
         GestureAction.Flashlight -> Torch.toggle(context)
         GestureAction.Camera -> context.startSafely(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA))
-        GestureAction.Assistant -> if (!context.startSafely(Intent(Intent.ACTION_VOICE_COMMAND))) {
+        GestureAction.Assistant -> if (!context.tryStart(Intent(Intent.ACTION_VOICE_COMMAND))) {
             context.startSafely(Intent(Intent.ACTION_ASSIST))
         }
     }

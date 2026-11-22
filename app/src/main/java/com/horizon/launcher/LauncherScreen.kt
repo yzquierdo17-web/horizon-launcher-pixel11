@@ -1534,7 +1534,7 @@ private fun AppDrawer(
                     item(span = { GridItemSpan(maxLineSpan) }, key = "play") {
                         ResultRow(Icons.Outlined.Shop, "Search Play Store for \u201C${query.trim()}\u201D", null) {
                             val q = Uri.encode(query.trim())
-                            if (!context.startSafely(Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=$q&c=apps")))) {
+                            if (!context.tryStart(Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=$q&c=apps")))) {
                                 context.startSafely(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/search?q=$q&c=apps")))
                             }
                         }
@@ -1880,7 +1880,12 @@ private fun String.normalizeForSearch(): String =
         .replace(Regex("\\p{Mn}+"), "")
         .lowercase()
 
-fun Context.startSafely(intent: Intent): Boolean =
+fun Context.startSafely(intent: Intent) {
+    runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+/** Like [startSafely], but says whether anything opened. */
+fun Context.tryStart(intent: Intent): Boolean =
     runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
 
 
