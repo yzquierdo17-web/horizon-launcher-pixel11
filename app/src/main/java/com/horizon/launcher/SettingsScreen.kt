@@ -454,7 +454,7 @@ fun SettingsScreen(
 
             item { Section("News") }
             item {
-                ToggleRow("News on the Today page", "Headlines from Google News for your country, plus feeds you add", s.showNews) { v ->
+                ToggleRow("Discover on the Today page", "Picture stories from Google News and top publishers, plus feeds you add", s.showNews) { v ->
                     vm.updateSettings { it.copy(showNews = v) }
                 }
             }
@@ -503,6 +503,12 @@ fun SettingsScreen(
                         ),
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                     )
+                }
+                if (s.newsLikedSources.isNotEmpty() || s.newsDismissed.isNotEmpty()) item {
+                    ActionRow(
+                        "Reset what Discover learned",
+                        "${s.newsLikedSources.size} favourite sources, ${s.newsDismissed.size} stories you weren't interested in",
+                    ) { vm.updateSettings { it.copy(newsLikedSources = emptySet(), newsDismissed = emptyList(), newsHearts = emptyList()) } }
                 }
                 if (s.newsHidden.isNotEmpty()) item {
                     ActionRow(
@@ -655,7 +661,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.19"
+    const val NAME = "0.20"
 }
 
 @Composable

@@ -320,14 +320,32 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         newsFetchedAt = System.currentTimeMillis()
         _newsLoading.value = true
         viewModelScope.launch(Dispatchers.IO) {
-            val list = runCatching { newsRepo.load(s.newsTopics, s.newsFeeds, s.newsHidden) }.getOrDefault(emptyList())
+            val list = runCatching {
+                newsRepo.load(s.newsTopics, s.newsFeeds, s.newsHidden, s.newsDismissed.toSet(), s.newsLikedSources)
+            }.getOrDefault(emptyList())
             if (list.isNotEmpty()) _news.value = list else newsFetchedAt = 0L // retry next time
             _newsLoading.value = false
         }
     }
 
+    /** Heart a story: it's remembered, and its source shows up more. */
+    fun toggleHeart(story: NewsStory) {
+        val on = story.link !in _settings.value.newsHearts
+        updateSettings {
+            if (on) it.copy(newsHearts = (it.newsHearts + story.link).takeLast(300), newsLikedSources = it.newsLikedSources + story.source)
+            else it.copy(newsHearts = it.newsHearts - story.link)
+        }
+        if (on) toast("You'll see more from ${story.source}")
+    }
+
+    /** "Not interested": the story goes away and won't come back. */
+    fun dismissStory(story: NewsStory) {
+        updateSettings { it.copy(newsDismissed = (it.newsDismissed + story.link).takeLast(400)) }
+        _news.value = _news.value.filter { it.link != story.link }
+    }
+
     fun hideNewsSource(source: String) {
-        updateSettings { it.copy(newsHidden = it.newsHidden + source) }
+        updateSettings { it.copy(newsHidden = it.newsHidden + source, newsLikedSources = it.newsLikedSources - source) }
         _news.value = _news.value.filter { it.source != source }
         toast("Stories from $source hidden")
     }

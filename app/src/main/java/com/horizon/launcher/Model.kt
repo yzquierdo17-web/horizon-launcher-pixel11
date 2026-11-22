@@ -222,6 +222,12 @@ data class LauncherSettings(
     val newsHidden: Set<String> = emptySet(),
     /** Show pictures on story cards. */
     val newsImages: Boolean = true,
+    /** Sources you hearted a story from; they show up more. */
+    val newsLikedSources: Set<String> = emptySet(),
+    /** Stories you hearted (links, newest last). */
+    val newsHearts: List<String> = emptyList(),
+    /** Stories you said you're not interested in (links, newest last). */
+    val newsDismissed: List<String> = emptyList(),
     /** "Flights overhead" card on the Today page. */
     val showFlights: Boolean = true,
     /** Radar range step, 0..3 (see FlightRadar ranges). */
@@ -278,6 +284,9 @@ data class LauncherSettings(
         .put("newsFeeds", JSONArray(newsFeeds))
         .put("newsHidden", JSONArray(newsHidden.toList()))
         .put("newsImages", newsImages)
+        .put("newsLiked", JSONArray(newsLikedSources.toList()))
+        .put("newsHearts", JSONArray(newsHearts))
+        .put("newsDismissed", JSONArray(newsDismissed))
         .put("flights", showFlights)
         .put("flightRange", flightRange)
 
@@ -339,6 +348,9 @@ data class LauncherSettings(
                 newsFeeds = o.optJSONArray("newsFeeds")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
                 newsHidden = o.optJSONArray("newsHidden")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet(),
                 newsImages = o.optBoolean("newsImages", true),
+                newsLikedSources = o.optJSONArray("newsLiked")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet(),
+                newsHearts = o.optJSONArray("newsHearts")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
+                newsDismissed = o.optJSONArray("newsDismissed")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
                 showFlights = o.optBoolean("flights", true),
                 flightRange = o.optInt("flightRange", 1).coerceIn(0, 3),
             )

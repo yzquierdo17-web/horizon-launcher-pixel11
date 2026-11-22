@@ -147,6 +147,7 @@ class TodayController(private val scope: CoroutineScope) {
  * Swipe right on your first Home page: your day at a glance. Today's agenda, the next hours
  * of weather, battery, and which apps have unread notifications. Swipe left (or Back) to return.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TodayPage(
     vm: LauncherViewModel,
@@ -205,10 +206,22 @@ fun TodayPage(
                 )
             },
     ) {
+        var pulled by remember { mutableStateOf(false) }
+        LaunchedEffect(newsLoading) { if (!newsLoading) pulled = false }
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = pulled && newsLoading,
+            onRefresh = {
+                pulled = true
+                vm.refreshNews(force = true)
+                vm.refreshWeather(force = true)
+                vm.refreshFlights(25, force = true)
+            },
+            modifier = Modifier.fillMaxSize().statusBarsPadding(),
+        ) {
         LazyColumn(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+            modifier = Modifier.fillMaxSize().navigationBarsPadding(),
         ) {
             item {
                 Column(Modifier.padding(top = 28.dp, bottom = 6.dp)) {
@@ -358,6 +371,7 @@ fun TodayPage(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
             }
+        }
         }
     }
 }
