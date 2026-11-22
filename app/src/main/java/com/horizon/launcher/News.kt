@@ -98,6 +98,7 @@ class NewsRepository(private val context: Context) {
             // Same story from two places: keep the one with a picture.
             .sortedByDescending { it.imageUrl != null }
             .distinctBy { it.title.lowercase(Locale.ROOT).filter(Char::isLetterOrDigit).take(50) }
+            .distinctBy { it.link }
         rank(stories, likedSources).take(150)
     }
 

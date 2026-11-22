@@ -1211,7 +1211,7 @@ private fun AppDrawer(
     val context = LocalContext.current
     val minimal = settings.minimalMode
     val answer = remember(query) { calculate(query) ?: convertUnits(query) }
-    val settingsHits = remember(query) { searchSettings(query) }
+    val settingsHits = remember(query) { searchSettings(query).distinctBy { it.label } }
     var contactsGranted by remember { mutableStateOf(hasContactsPermission(context)) }
     val contactHits by produceState(emptyList<ContactHit>(), query, contactsGranted) {
         value = if (query.isBlank()) emptyList()
@@ -1228,7 +1228,7 @@ private fun AppDrawer(
         value = emptyList()
         if (settings.webSuggestions && query.trim().length >= 2) {
             delay(250)
-            value = withContext(Dispatchers.IO) { webSuggestions(query) }
+            value = withContext(Dispatchers.IO) { webSuggestions(query).distinctBy { it.lowercase() } }
         }
     }
     var mediaGranted by remember { mutableStateOf(hasMediaPermission(context)) }
@@ -1497,7 +1497,7 @@ private fun AppDrawer(
                     }
                     if (eventHits.isNotEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "events-h") { ResultHeader("Calendar") }
-                        items(eventHits, key = { "e-${it.eventId}-${it.begin}" }, span = { GridItemSpan(maxLineSpan) }) { m ->
+                        items(eventHits, key = { "e-${it.eventId}-${it.begin}-${it.end}" }, span = { GridItemSpan(maxLineSpan) }) { m ->
                             ResultRow(Icons.Outlined.Event, m.title, eventWhen(m, context)) { vm.calendar.openEvent(m) }
                         }
                     }

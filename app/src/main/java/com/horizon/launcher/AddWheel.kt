@@ -388,7 +388,7 @@ fun IconStyleScreen(vm: LauncherViewModel, apps: List<AppEntry>, onDone: () -> U
             } else if (list.isEmpty()) {
                 item { Hint("No icon packs installed. Get one from the Play Store, for example by searching \"icon pack\". Most packs made for Nova or Lawnchair work here.") }
             } else {
-                items(list, key = { it.packageName }) { p ->
+                items(list.distinctBy { it.packageName }, key = { it.packageName }) { p ->
                     PackRow(p.label, "Icon pack", settings.iconPack == p.packageName) {
                         vm.updateSettings { it.copy(iconPack = p.packageName) }
                     }

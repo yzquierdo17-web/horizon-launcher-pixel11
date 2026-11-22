@@ -158,8 +158,8 @@ fun LazyListScope.newsSection(
     }
 
     val limit = minOf(ui.limit, shown.size)
-    shown.subList(0, limit).forEach { s ->
-        item(key = "news-${s.link}") {
+    shown.subList(0, limit).forEachIndexed { i, s ->
+        item(key = "news-$i-${s.link}") {
             StoryCard(vm, s, settings.newsImages, s.link in settings.newsHearts, saved.any { it.link == s.link })
         }
     }

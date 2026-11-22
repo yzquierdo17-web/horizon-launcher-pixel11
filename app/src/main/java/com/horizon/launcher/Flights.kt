@@ -108,7 +108,7 @@ class FlightRepository {
                 seenAt = now - (seenPos * 1000).toLong(),
             )
         }
-        return out
+        return out.distinctBy { it.hex }
     }
 
     /** Finds one flight by callsign anywhere in the world. Null if the network couldn't be reached. */

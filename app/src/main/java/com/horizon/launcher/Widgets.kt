@@ -238,8 +238,9 @@ fun WidgetPicker(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.navigationBarsPadding(),
         ) {
-            groups.forEach { (appLabel, list) ->
-                item(key = "h-$appLabel") {
+            // Two apps can share a name (two "Weather" apps), so keys include the position.
+            groups.forEachIndexed { gi, (appLabel, list) ->
+                item(key = "h-$gi-$appLabel") {
                     Text(
                         appLabel,
                         color = LocalInk.current.copy(alpha = 0.75f),
@@ -248,7 +249,7 @@ fun WidgetPicker(
                         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp, start = 4.dp),
                     )
                 }
-                items(list, key = { it.provider.flattenToString() + it.profile.hashCode() }) { info ->
+                items(list, key = { "w-$gi-" + it.provider.flattenToString() + it.profile.hashCode() }) { info ->
                     WidgetRow(vm, info) { onPick(info) }
                 }
             }
