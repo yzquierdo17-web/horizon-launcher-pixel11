@@ -26,6 +26,8 @@ data class HomeItem(
     val apps: List<String> = emptyList(),
     val name: String = "",
     val widgetId: Int = -1,
+    /** More widgets stacked in the same spot (swipe up and down to switch). */
+    val stack: List<Int> = emptyList(),
 ) {
     fun covers(cx: Int, cy: Int) = cx in x until x + spanX && cy in y until y + spanY
 }
@@ -58,6 +60,7 @@ fun encodeItems(items: List<HomeItem>): String {
                 .put("sy", it.spanY)
                 .put("n", it.name)
                 .put("w", it.widgetId)
+                .put("st", JSONArray(it.stack))
                 .put("a", JSONArray(it.apps)),
         )
     }
@@ -82,6 +85,7 @@ fun decodeItems(json: String?): List<HomeItem> {
                 apps = (0 until a.length()).map { a.getString(it) },
                 name = o.optString("n", ""),
                 widgetId = o.optInt("w", -1),
+                stack = o.optJSONArray("st")?.let { s -> (0 until s.length()).map { s.getInt(it) } } ?: emptyList(),
             )
         }
     }.getOrDefault(emptyList())

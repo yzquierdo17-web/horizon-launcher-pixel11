@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Fingerprint / screen lock for hidden apps -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Install Horizon's own updates from its GitHub releases -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
         <intent>
@@ -59,6 +61,9 @@
             android:taskAffinity="com.horizon.launcher.lock"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Horizon.Lock" />
+
+        <!-- Result of installing a Horizon update -->
+        <receiver android:name=".UpdateReceiver" android:exported="false" />
 
         <!-- "Horizon Dial" live wallpaper: the rotating dial clock for the lock screen -->
         <service

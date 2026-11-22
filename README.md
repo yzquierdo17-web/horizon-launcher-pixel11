@@ -45,6 +45,11 @@ Builds are signed with a permanent key once two repository secrets are set (Sett
 
 After that, every new APK installs over the last one. Without them, builds fall back to a temporary key, and you may need to uninstall first.
 
+### Today, stacks and updates
+- **Today page:** swipe right on your first Home page. It shows a greeting, today's remaining agenda (with Join buttons for calls starting soon), the weather now plus the next six hours and today's high and low, your battery (with "full in…" while charging), and which apps have unread notifications. Swipe left or press Back to return.
+- **Widget stacks:** long-press a widget and choose **Add widget to stack**, then pick another widget. Swipe up and down on the stack to switch between them; dots on the side show where you are. Long-press to remove the one showing, or the whole stack.
+- **Updates inside Horizon:** Horizon checks your GitHub releases every few hours. When a newer build exists, a chip appears under the clock ("Horizon update ready · Install"), and Settings → Updates shows what's new. One tap downloads it and Android asks you to confirm; your layout is kept. The first time, Android asks you to allow Horizon to install apps.
+
 ### Clock faces
 Settings → Look → **Clock face** opens a picker with live previews:
 - **Large** and **Compact**

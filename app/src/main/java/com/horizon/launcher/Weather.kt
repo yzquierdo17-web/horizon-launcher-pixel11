@@ -19,7 +19,18 @@ import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
 /** Current conditions for the line next to the date. */
-data class Weather(val temp: Int, val unit: String, val label: String, val isDay: Boolean, val place: String?) {
+data class Weather(
+    val temp: Int,
+    val unit: String,
+    val label: String,
+    val isDay: Boolean,
+    val place: String?,
+    val code: Int = 0,
+    val high: Int? = null,
+    val low: Int? = null,
+    /** The next few hours, for the Today page. */
+    val hourly: List<HourWeather> = emptyList(),
+) {
     /** "41° Clear" */
     val short: String get() = "$temp° $label"
 }
@@ -39,15 +50,42 @@ class WeatherRepository(private val context: Context) {
         val unit = if (fahrenheit) "fahrenheit" else "celsius"
         val json = get(
             "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
-                "&current=temperature_2m,weather_code,is_day&temperature_unit=$unit",
+                "&current=temperature_2m,weather_code,is_day" +
+                "&hourly=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min" +
+                "&forecast_days=2&timezone=auto&temperature_unit=$unit",
         ) ?: return null
-        val cur = JSONObject(json).optJSONObject("current") ?: return null
+        val root = JSONObject(json)
+        val cur = root.optJSONObject("current") ?: return null
+        val nowStamp = cur.optString("time") // e.g. 2026-11-21T19:15, in the place's own time
+        val hourly = root.optJSONObject("hourly")?.let { h ->
+            val times = h.optJSONArray("time")
+            val temps = h.optJSONArray("temperature_2m")
+            val codes = h.optJSONArray("weather_code")
+            val days = h.optJSONArray("is_day")
+            if (times == null || temps == null || codes == null) emptyList()
+            else (0 until times.length())
+                .filter { times.getString(it) > nowStamp }
+                .take(6)
+                .map { i ->
+                    HourWeather(
+                        hour = times.getString(i).substringAfter('T').substringBefore(':').toIntOrNull() ?: 0,
+                        temp = temps.optDouble(i).roundToInt(),
+                        code = codes.optInt(i),
+                        isDay = (days?.optInt(i, 1) ?: 1) == 1,
+                    )
+                }
+        }.orEmpty()
+        val daily = root.optJSONObject("daily")
         return Weather(
             temp = cur.optDouble("temperature_2m").roundToInt(),
             unit = if (fahrenheit) "°F" else "°C",
             label = describe(cur.optInt("weather_code"), cur.optInt("is_day", 1) == 1),
             isDay = cur.optInt("is_day", 1) == 1,
             place = place,
+            code = cur.optInt("weather_code"),
+            high = daily?.optJSONArray("temperature_2m_max")?.optDouble(0)?.takeIf { !it.isNaN() }?.roundToInt(),
+            low = daily?.optJSONArray("temperature_2m_min")?.optDouble(0)?.takeIf { !it.isNaN() }?.roundToInt(),
+            hourly = hourly,
         )
     }
 
@@ -123,3 +161,6 @@ class WeatherRepository(private val context: Context) {
         }
     }
 }
+
+/** One hour of the forecast. */
+data class HourWeather(val hour: Int, val temp: Int, val code: Int, val isDay: Boolean)

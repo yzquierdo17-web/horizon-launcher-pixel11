@@ -27,6 +27,7 @@ data class Meeting(
     /** Meet / Zoom / Teams / Webex link found in the event's location or notes. */
     val joinUrl: String?,
     val color: Int?,
+    val allDay: Boolean = false,
 )
 
 /** Reads the next timed meeting from the phone's calendars (Google, Exchange, anything synced). */
@@ -83,6 +84,44 @@ class CalendarRepository(private val context: Context) {
                     )
                 }
         }.getOrNull()
+    }
+
+    /** Everything still ahead today (plus all-day events), for the Today page. */
+    fun eventsToday(now: Long = System.currentTimeMillis()): List<Meeting> {
+        if (!hasPermission()) return emptyList()
+        val zone = java.time.ZoneId.systemDefault()
+        val start = java.time.LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+        val end = start + 24 * HOUR
+        val uri = Instances.CONTENT_URI.buildUpon().also {
+            ContentUris.appendId(it, start)
+            ContentUris.appendId(it, end)
+        }.build()
+        val projection = arrayOf(
+            Instances.EVENT_ID, Instances.TITLE, Instances.BEGIN, Instances.END,
+            Instances.EVENT_LOCATION, Instances.DESCRIPTION, Instances.DISPLAY_COLOR, Instances.ALL_DAY,
+        )
+        val selection = "${Instances.END} > ? AND " +
+            "${Instances.SELF_ATTENDEE_STATUS} != ${Attendees.ATTENDEE_STATUS_DECLINED} AND ${Instances.VISIBLE} = 1"
+        return runCatching {
+            val out = mutableListOf<Meeting>()
+            context.contentResolver.query(uri, projection, selection, arrayOf(now.toString()), "${Instances.ALL_DAY} DESC, ${Instances.BEGIN} ASC")
+                ?.use { c ->
+                    while (c.moveToNext() && out.size < 8) {
+                        val location = c.getString(4).orEmpty()
+                        val notes = c.getString(5).orEmpty()
+                        out += Meeting(
+                            eventId = c.getLong(0),
+                            title = c.getString(1)?.takeIf { it.isNotBlank() } ?: "Busy",
+                            begin = c.getLong(2),
+                            end = c.getLong(3),
+                            joinUrl = findJoinUrl(location) ?: findJoinUrl(notes),
+                            color = if (c.isNull(6)) null else c.getInt(6),
+                            allDay = c.getInt(7) == 1,
+                        )
+                    }
+                }
+            out
+        }.getOrDefault(emptyList())
     }
 
     fun openEvent(m: Meeting) {

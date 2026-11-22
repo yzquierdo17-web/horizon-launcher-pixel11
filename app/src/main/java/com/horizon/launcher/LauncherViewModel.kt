@@ -193,6 +193,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
         meetingRefresh.value++
         refreshWeather()
+        // Back from Android's install screen without updating: offer it again.
+        if (_update.value is UpdateState.Installing) {
+            _update.value = UpdateState.Idle
+            lastUpdateCheck = 0L
+        }
+        checkForUpdates()
     }
 
     /** Horizon went to the background: lock the hidden apps again. */
@@ -217,6 +223,47 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshMeetings() { meetingRefresh.value++ }
+
+    // ---------- Updates ----------
+
+    val updater = Updater(app)
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val update: StateFlow<UpdateState> = _update.asStateFlow()
+    private var lastUpdateCheck = 0L
+
+    /** Looks for a newer build on GitHub; automatic checks happen at most every 6 hours. */
+    fun checkForUpdates(manual: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val busy = _update.value is UpdateState.Downloading || _update.value is UpdateState.Installing
+        if (busy || (!manual && now - lastUpdateCheck < 6 * 60 * 60_000L)) return
+        lastUpdateCheck = now
+        if (manual) _update.value = UpdateState.Checking
+        viewModelScope.launch(Dispatchers.IO) {
+            val latest = updater.latest()
+            _update.value = when {
+                latest == null -> if (manual) UpdateState.Failed("Couldn't reach GitHub. Check your connection") else _update.value.let { if (it is UpdateState.Checking) UpdateState.Idle else it }
+                latest.build > updater.currentBuild() -> UpdateState.Available(latest)
+                else -> if (manual) UpdateState.UpToDate else UpdateState.Idle
+            }
+        }
+    }
+
+    fun installUpdate() {
+        val info = (_update.value as? UpdateState.Available)?.info
+            ?: (_update.value as? UpdateState.Failed)?.let { return checkForUpdates(manual = true) }
+            ?: return
+        if (!updater.ensureInstallAllowed()) return
+        _update.value = UpdateState.Downloading(info, 0f)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                updater.downloadAndInstall(info) { p -> _update.value = UpdateState.Downloading(info, p) }
+            }.onSuccess {
+                _update.value = UpdateState.Installing
+            }.onFailure {
+                _update.value = UpdateState.Failed("Download failed. Tap to try again")
+            }
+        }
+    }
 
     // ---------- Weather ----------
 
@@ -621,8 +668,47 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         return sx.coerceIn(1, GRID_COLS) to sy.coerceIn(1, GRID_ROWS)
     }
 
+    // ---------- Widget stacks ----------
+
+    /** The stack waiting for its next widget (set by "Add widget to stack"). */
+    private var stackTarget: Long? = null
+    private var stackTargetAt = 0L
+
+    fun startAddingToStack(itemId: Long) {
+        stackTarget = itemId
+        stackTargetAt = System.currentTimeMillis()
+        showWidgetPicker(true)
+    }
+
+    fun cancelAddingToStack() { stackTarget = null }
+
+    /** Take one widget out of a stack; the rest stay. */
+    fun removeFromStack(itemId: Long, widgetId: Int) {
+        val items = _items.value
+        val it0 = items.firstOrNull { it.id == itemId } ?: return
+        val all = listOf(it0.widgetId) + it0.stack
+        val left = all - widgetId
+        runCatching { widgetHost.deleteAppWidgetId(widgetId) }
+        if (left.isEmpty()) {
+            setItems(items - it0)
+            return
+        }
+        setItems(items.map { if (it.id == itemId) it.copy(widgetId = left.first(), stack = left.drop(1)) else it })
+    }
+
     fun placeWidget(widgetId: Int, info: AppWidgetProviderInfo) {
         val items = _items.value
+        // Going into a stack? (only if asked for in the last few minutes)
+        val target = stackTarget?.takeIf { System.currentTimeMillis() - stackTargetAt < 5 * 60_000L }
+        stackTarget = null
+        if (target != null) {
+            val host = items.firstOrNull { it.id == target && it.type == TYPE_WIDGET }
+            if (host != null) {
+                setItems(items.map { if (it.id == target) it.copy(stack = it.stack + widgetId) else it })
+                toast("Added to the stack. Swipe up or down on it to switch")
+                return
+            }
+        }
         val (sx, sy) = spansFor(info)
         val (page, x, y) = findFreeAnywhere(items, currentPage, sx, sy)
         setItems(items + HomeItem(nextId(items), TYPE_WIDGET, page, x, y, sx, sy, widgetId = widgetId))
@@ -670,7 +756,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             DropTarget.Remove -> {
                 if (payload is DragPayload.FromDrawer) return
                 val (ni, nd) = withoutSource(payload, items, dock)
-                if (dragged?.type == TYPE_WIDGET) runCatching { widgetHost.deleteAppWidgetId(dragged.widgetId) }
+                if (dragged?.type == TYPE_WIDGET) {
+                    (listOf(dragged.widgetId) + dragged.stack).forEach { id -> runCatching { widgetHost.deleteAppWidgetId(id) } }
+                }
                 setItems(ni)
                 setDock(nd)
             }

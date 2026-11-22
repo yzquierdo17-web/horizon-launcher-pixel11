@@ -36,6 +36,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material3.Checkbox
 import androidx.compose.material.icons.outlined.Person
@@ -289,11 +290,17 @@ private fun LauncherContent(
             .collect { if (it != null) view.tick() }
     }
 
-    BackHandler(enabled = drawerOpen || openFolderId != null || pickerOpen || settingsOpen || overlay != null) {
+    // Today page: swipe right on the first Home page.
+    val todayScope = rememberCoroutineScope()
+    val today = remember { TodayController(todayScope) }
+    LaunchedEffect(drawerOpen) { if (drawerOpen) today.close() }
+
+    BackHandler(enabled = drawerOpen || openFolderId != null || pickerOpen || settingsOpen || overlay != null || today.visible) {
         when {
             overlay != null -> vm.showOverlay(null)
+            today.visible && !drawerOpen && !settingsOpen -> today.close()
             settingsOpen -> vm.openSettings(false)
-            pickerOpen -> vm.showWidgetPicker(false)
+            pickerOpen -> { vm.cancelAddingToStack(); vm.showWidgetPicker(false) }
             openFolderId != null -> vm.closeFolder()
             else -> vm.closeDrawer()
         }
@@ -367,6 +374,7 @@ private fun LauncherContent(
     Box(Modifier.fillMaxSize()) {
         HomeScreen(
             vm = vm,
+            today = today,
             drag = drag,
             pager = pager,
             pageCount = pageCount,
@@ -383,6 +391,18 @@ private fun LauncherContent(
                 scaleY = 1f - 0.06f * progress
             },
         )
+
+        if (today.visible) {
+            OnSurface {
+                TodayPage(
+                    vm = vm,
+                    today = today,
+                    apps = visibleApps,
+                    onLaunch = launch,
+                    modifier = Modifier.graphicsLayer { translationX = (today.progress - 1f) * size.width },
+                )
+            }
+        }
 
         if (progress > 0.001f || drag.payload is DragPayload.FromDrawer) {
             OnSurface {
@@ -427,7 +447,10 @@ private fun LauncherContent(
                         vm.showWidgetPicker(false)
                         onAddWidget(info)
                     },
-                    onClose = { vm.showWidgetPicker(false) },
+                    onClose = {
+                        vm.cancelAddingToStack()
+                        vm.showWidgetPicker(false)
+                    },
                 )
             }
         }
@@ -544,6 +567,7 @@ private fun LauncherContent(
 @Composable
 private fun HomeScreen(
     vm: LauncherViewModel,
+    today: TodayController,
     drag: DragController,
     pager: PagerState,
     pageCount: Int,
@@ -662,6 +686,8 @@ private fun HomeScreen(
                     snapAnimationSpec = spring(dampingRatio = 0.78f, stiffness = 360f),
                 ),
                 modifier = Modifier
+                    .onSizeChanged { today.width = it.width.toFloat() }
+                    .nestedScroll(remember(pager) { today.pagerConnection { pager.currentPage == 0 && pager.currentPageOffsetFraction == 0f } })
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
@@ -841,6 +867,7 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { calendarGranted = vm.calendar.hasPermission() }
     val weather by vm.weather.collectAsState()
     val focusActive by vm.focusActive.collectAsState()
+    val update by vm.update.collectAsState()
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         vm.updateSettings { it.copy(weatherPromptDone = true, showWeather = granted || it.weatherCity.isNotBlank()) }
         vm.refreshWeather(force = true)
@@ -930,6 +957,23 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
                 onDismiss = { vm.updateSettings { it.copy(weatherPromptDone = true) } },
             )
         }
+        // A newer Horizon is on GitHub: one tap to install.
+        when (val st = update) {
+            is UpdateState.Available -> {
+                Spacer(Modifier.height(8.dp))
+                GlanceChip(
+                    "Horizon update ready \u00B7 Install",
+                    Icons.Outlined.SystemUpdate,
+                    onClick = { vm.installUpdate() },
+                )
+            }
+            is UpdateState.Downloading -> {
+                Spacer(Modifier.height(8.dp))
+                GlanceChip("Updating Horizon \u00B7 ${(st.progress * 100).toInt()}%", Icons.Outlined.SystemUpdate)
+            }
+            else -> Unit
+        }
+
         if (focusActive) {
             Spacer(Modifier.height(8.dp))
             if (settings.focusOn) {

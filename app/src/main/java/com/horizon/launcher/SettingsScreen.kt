@@ -60,6 +60,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val s by vm.settings.collectAsState()
     val work by vm.workProfile.collectAsState()
+    val update by vm.update.collectAsState()
     val hiddenUnlocked by vm.hiddenUnlocked.collectAsState()
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         vm.refreshWeather(force = true)
@@ -97,6 +98,40 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier.navigationBarsPadding(),
         ) {
+            item { Section("Updates") }
+            item {
+                val st = update
+                val current = vm.updater.currentBuild()
+                val subtitle = when (st) {
+                    UpdateState.Idle -> "You're on build $current. Horizon checks for new builds by itself"
+                    UpdateState.Checking -> "Checking…"
+                    UpdateState.UpToDate -> "You're on the newest build ($current)"
+                    is UpdateState.Available -> "Build ${st.info.build} is ready (you have $current). Tap to install"
+                    is UpdateState.Downloading -> "Downloading build ${st.info.build}… ${(st.progress * 100).toInt()}%"
+                    UpdateState.Installing -> "Finishing the install…"
+                    is UpdateState.Failed -> st.message
+                }
+                ActionRow(
+                    if (st is UpdateState.Available) "Install update" else "Check for updates",
+                    subtitle,
+                ) {
+                    when (st) {
+                        is UpdateState.Available, is UpdateState.Failed -> vm.installUpdate()
+                        else -> vm.checkForUpdates(manual = true)
+                    }
+                }
+            }
+            (update as? UpdateState.Available)?.info?.notes?.takeIf { it.isNotBlank() }?.let { notes ->
+                item {
+                    Text(
+                        "What's new\n$notes",
+                        color = LocalInk.current.copy(alpha = 0.7f),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
+                    )
+                }
+            }
+
             item { Section("Look") }
             item {
                 ChoiceRow(
@@ -536,7 +571,7 @@ fun SettingsScreen(
 
             item {
                 Text(
-                    "Horizon ${BuildConfigVersion.NAME}",
+                    "Horizon ${BuildConfigVersion.NAME} · build ${vm.updater.currentBuild()}",
                     color = LocalInk.current.copy(alpha = 0.4f),
                     fontSize = 12.sp,
                     modifier = Modifier.padding(top = 24.dp, start = 8.dp),
@@ -547,7 +582,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.16"
+    const val NAME = "0.17"
 }
 
 @Composable

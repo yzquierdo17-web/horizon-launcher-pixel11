@@ -1,5 +1,9 @@
 package com.horizon.launcher
 
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.key
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetProviderInfo
 import android.os.Build
@@ -113,37 +117,49 @@ fun WidgetTile(
                 onDragEnd = { dropped() },
             ),
     ) {
-        if (info == null) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(LocalInk.current.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("Widget unavailable", color = LocalInk.current.copy(alpha = 0.7f), fontSize = 12.sp)
-            }
+        val ids = remember(item.widgetId, item.stack) { listOf(item.widgetId) + item.stack }
+        val stackState = rememberPagerState { ids.size }
+        if (ids.size == 1) {
+            HostedWidget(vm, item.widgetId)
         } else {
-            BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp))) {
-                val w = maxWidth.value
-                val h = maxHeight.value
-                AndroidView(
-                    factory = { ctx ->
-                        vm.widgetHost.createView(ctx, item.widgetId, info).apply { setPadding(0, 0, 0, 0) }
-                    },
-                    update = { view -> view.updateSizeCompat(w, h) },
-                    modifier = Modifier.fillMaxSize(),
-                )
+            // A stack: swipe up and down to switch widgets; dots on the side show where you are.
+            Box(Modifier.fillMaxSize()) {
+                VerticalPager(
+                    state = stackState,
+                    beyondViewportPageCount = 1,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)),
+                ) { p -> HostedWidget(vm, ids[p]) }
+                Column(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    ids.indices.forEach { i ->
+                        Box(
+                            Modifier
+                                .size(width = 3.dp, height = if (i == stackState.currentPage) 12.dp else 5.dp)
+                                .clip(CircleShape)
+                                .background(LocalInk.current.copy(alpha = if (i == stackState.currentPage) 0.9f else 0.4f)),
+                        )
+                    }
+                }
             }
         }
 
         val canResize = info != null && info.resizeMode != AppWidgetProviderInfo.RESIZE_NONE
+        val shownId = ids.getOrElse(stackState.currentPage) { item.widgetId }
+        val shownLabel = remember(shownId) {
+            runCatching { vm.widgetManager.getAppWidgetInfo(shownId)?.loadLabel(vm.getApplication<android.app.Application>().packageManager) }.getOrNull()
+        }
         ItemMenu(
             expanded = menuOpen,
             onDismiss = { menuOpen = false },
             actions = listOfNotNull(
+                MenuAction("Add widget to stack") { vm.startAddingToStack(item.id) },
+                if (ids.size > 1) MenuAction("Remove ${shownLabel ?: "this widget"} from stack") { vm.removeFromStack(item.id, shownId) } else null,
                 if (canResize) MenuAction("Resize") { resizeOpen = true } else null,
-                MenuAction("Remove") { vm.removeItem(item.id) },
+                MenuAction(if (ids.size > 1) "Remove stack" else "Remove") { vm.removeItem(item.id) },
             ),
         )
         ItemMenu(
@@ -282,6 +298,38 @@ private fun WidgetRow(vm: LauncherViewModel, info: AppWidgetProviderInfo, onClic
             Text(label, color = LocalInk.current, fontSize = 16.sp, maxLines = 2)
             Spacer(Modifier.height(2.dp))
             Text("$sx × $sy", color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
+        }
+    }
+}
+
+
+/** One app widget, sized so Android 12+ widgets pick the right layout. */
+@Composable
+private fun HostedWidget(vm: LauncherViewModel, widgetId: Int) {
+    val info = remember(widgetId) { vm.widgetManager.getAppWidgetInfo(widgetId) }
+    if (info == null) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(24.dp))
+                .background(LocalInk.current.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Widget unavailable", color = LocalInk.current.copy(alpha = 0.7f), fontSize = 12.sp)
+        }
+        return
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp))) {
+        val w = maxWidth.value
+        val h = maxHeight.value
+        key(widgetId) {
+            AndroidView(
+                factory = { ctx ->
+                    vm.widgetHost.createView(ctx, widgetId, info).apply { setPadding(0, 0, 0, 0) }
+                },
+                update = { view -> view.updateSizeCompat(w, h) },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

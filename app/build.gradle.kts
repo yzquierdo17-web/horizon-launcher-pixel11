@@ -4,6 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Each GitHub build's number becomes the version code, so Horizon can tell when a newer build exists.
+val buildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+
 // Permanent signing key, provided by the build server (GitHub secrets). Without it, builds use a
 // temporary debug key, and Android won't install them over a copy signed with a different key.
 val horizonKeystore = System.getenv("HORIZON_KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
@@ -16,8 +19,8 @@ android {
         applicationId = "com.horizon.launcher"
         minSdk = 29
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.16"
+        versionCode = buildNumber ?: 16
+        versionName = "0.17" + (buildNumber?.let { " (build $it)" } ?: "")
     }
 
     signingConfigs {

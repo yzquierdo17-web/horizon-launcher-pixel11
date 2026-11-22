@@ -79,6 +79,7 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: Horizon build ${{ github.run_number }}
-          body: Newest build from main. On your phone, open Horizon.apk to install it.
+          # What's new: shown in Horizon's update prompt.
+          body: ${{ github.event.head_commit.message }}
           files: Horizon.apk
           make_latest: "true"
