@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.Work
@@ -491,6 +492,9 @@ private fun LauncherContent(
             }
             LauncherViewModel.Overlay.ClockFaces -> OnSurface {
                 ClockFacePicker(vm) { vm.showOverlay(null) }
+            }
+            LauncherViewModel.Overlay.Radar -> OnSurface {
+                FlightRadarScreen(vm) { vm.showOverlay(null) }
             }
             LauncherViewModel.Overlay.Favorites -> OnSurface {
                 AppChecklistScreen(
@@ -1392,6 +1396,16 @@ private fun AppDrawer(
                 if (answer != null) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "answer") {
                         AnswerCard(query = query, answer = answer)
+                    }
+                }
+                if (query.trim().length >= 3 && listOf("radar", "flight", "plane", "aircraft", "airplane").any {
+                        it.startsWith(query.trim().lowercase()) || query.trim().lowercase().startsWith(it)
+                    }) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "radar") {
+                        ResultRow(Icons.Outlined.Flight, "Flight radar", "Live planes around you") {
+                            close()
+                            vm.showOverlay(LauncherViewModel.Overlay.Radar)
+                        }
                     }
                 }
                 if (showSuggestions && !minimal) {

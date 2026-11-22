@@ -222,6 +222,10 @@ data class LauncherSettings(
     val newsHidden: Set<String> = emptySet(),
     /** Show pictures on story cards. */
     val newsImages: Boolean = true,
+    /** "Flights overhead" card on the Today page. */
+    val showFlights: Boolean = true,
+    /** Radar range step, 0..3 (see FlightRadar ranges). */
+    val flightRange: Int = 1,
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -274,6 +278,8 @@ data class LauncherSettings(
         .put("newsFeeds", JSONArray(newsFeeds))
         .put("newsHidden", JSONArray(newsHidden.toList()))
         .put("newsImages", newsImages)
+        .put("flights", showFlights)
+        .put("flightRange", flightRange)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -333,6 +339,8 @@ data class LauncherSettings(
                 newsFeeds = o.optJSONArray("newsFeeds")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
                 newsHidden = o.optJSONArray("newsHidden")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet(),
                 newsImages = o.optBoolean("newsImages", true),
+                showFlights = o.optBoolean("flights", true),
+                flightRange = o.optInt("flightRange", 1).coerceIn(0, 3),
             )
         }
     }

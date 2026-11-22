@@ -89,7 +89,8 @@ class WeatherRepository(private val context: Context) {
         )
     }
 
-    private suspend fun coordinates(city: String): Triple<Double, Double, String?>? {
+    /** Your city if you typed one, otherwise your approximate position (about 1 km). */
+    suspend fun coordinates(city: String): Triple<Double, Double, String?>? {
         if (city.isNotBlank()) {
             val json = get(
                 "https://geocoding-api.open-meteo.com/v1/search?count=1&language=" +

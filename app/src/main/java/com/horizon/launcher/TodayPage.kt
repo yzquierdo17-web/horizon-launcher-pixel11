@@ -344,6 +344,10 @@ fun TodayPage(
                 }
             }
 
+            if (settings.showFlights) item(key = "flights") {
+                FlightsTodayCard(vm) { vm.showOverlay(LauncherViewModel.Overlay.Radar) }
+            }
+
             newsSection(vm, settings, news, newsLoading, newsUi)
 
             item {

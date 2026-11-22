@@ -439,6 +439,19 @@ fun SettingsScreen(
                 }
             }
 
+            item { Section("Flight radar") }
+            item {
+                ToggleRow("Flights overhead on the Today page", "Live planes near you, with a mini radar", s.showFlights) { v ->
+                    vm.updateSettings { it.copy(showFlights = v) }
+                }
+            }
+            item {
+                ActionRow("Open flight radar", "Live map of the planes around you, updated every 5 seconds") {
+                    vm.openSettings(false)
+                    vm.showOverlay(LauncherViewModel.Overlay.Radar)
+                }
+            }
+
             item { Section("News") }
             item {
                 ToggleRow("News on the Today page", "Headlines from Google News for your country, plus feeds you add", s.showNews) { v ->
@@ -642,7 +655,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.18"
+    const val NAME = "0.19"
 }
 
 @Composable

@@ -194,6 +194,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         meetingRefresh.value++
         refreshWeather()
         refreshNews()
+        if (radarPaused && _overlay.value == Overlay.Radar) startRadar(radarRadius)
+        radarPaused = false
         // Back from Android's install screen without updating: offer it again.
         if (_update.value is UpdateState.Installing) {
             _update.value = UpdateState.Idle
@@ -206,6 +208,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun onStop() {
         _hiddenUnlocked.value = false
         if (_overlay.value == Overlay.HiddenApps) _overlay.value = null
+        // No live updates while Horizon isn't on screen.
+        if (radarJob != null) { stopRadar(); radarPaused = true }
     }
 
     /**
@@ -326,6 +330,88 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         updateSettings { it.copy(newsHidden = it.newsHidden + source) }
         _news.value = _news.value.filter { it.source != source }
         toast("Stories from $source hidden")
+    }
+
+    // ---------- Flight radar ----------
+
+    data class FlightsState(
+        val center: Pair<Double, Double>? = null,
+        val planes: List<Aircraft> = emptyList(),
+        val routes: Map<String, FlightRoute?> = emptyMap(),
+        val radiusNm: Int = 0,
+        val updatedAt: Long = 0L,
+        val loading: Boolean = false,
+        /** "location", "network" or null. */
+        val problem: String? = null,
+    )
+
+    val flightRepo = FlightRepository()
+    private val _flights = MutableStateFlow(FlightsState())
+    val flights: StateFlow<FlightsState> = _flights.asStateFlow()
+    private var radarJob: kotlinx.coroutines.Job? = null
+    private var radarPaused = false
+    private var radarRadius = 25
+    private var flightCenterAt = 0L
+
+    /** Loads planes once (for the Today card), unless it was done in the last minute. */
+    fun refreshFlights(radiusNm: Int, force: Boolean = false) {
+        val f = _flights.value
+        if (!force && f.radiusNm >= radiusNm && System.currentTimeMillis() - f.updatedAt < 60_000L) return
+        if (f.loading) return
+        viewModelScope.launch { loadFlights(radiusNm) }
+    }
+
+    /** Live updates every 5 seconds while the radar is open. */
+    fun startRadar(radiusNm: Int) {
+        radarRadius = radiusNm
+        radarJob?.cancel()
+        radarJob = viewModelScope.launch {
+            while (true) {
+                loadFlights(radiusNm)
+                kotlinx.coroutines.delay(5_000)
+            }
+        }
+    }
+
+    fun stopRadar() {
+        radarJob?.cancel()
+        radarJob = null
+    }
+
+    private suspend fun loadFlights(radiusNm: Int) {
+        _flights.value = _flights.value.copy(loading = true)
+        val s = _settings.value
+        // Your position is looked up again every few minutes, not on every refresh.
+        var center = _flights.value.center
+        if (center == null || System.currentTimeMillis() - flightCenterAt > 5 * 60_000L) {
+            val c = runCatching { weatherRepo.coordinates(s.weatherCity) }.getOrNull()
+            if (c != null) {
+                center = c.first to c.second
+                flightCenterAt = System.currentTimeMillis()
+            }
+        }
+        if (center == null) {
+            _flights.value = _flights.value.copy(loading = false, problem = "location")
+            return
+        }
+        val planes = flightRepo.nearby(center.first, center.second, radiusNm)
+        if (planes == null) {
+            _flights.value = _flights.value.copy(center = center, loading = false, problem = "network")
+            return
+        }
+        val inRange = planes.filter {
+            FlightRepository.distanceNm(center.first, center.second, it.lat, it.lon) <= radiusNm
+        }
+        _flights.value = _flights.value.copy(
+            center = center,
+            planes = inRange,
+            radiusNm = radiusNm,
+            updatedAt = System.currentTimeMillis(),
+            loading = false,
+            problem = null,
+        )
+        val routes = runCatching { flightRepo.routesFor(inRange) }.getOrNull()
+        if (routes != null) _flights.value = _flights.value.copy(routes = _flights.value.routes + routes)
     }
 
     // ---------- Focus ----------
@@ -592,7 +678,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Full-screen helpers opened from the add wheel (or Settings, for Icon style). */
-    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites, ClockFaces }
+    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites, ClockFaces, Radar }
 
     /** Choose the clock face (keeps the older Compact / Dial switches in step). */
     fun setClockFace(face: ClockFace) = updateSettings {
