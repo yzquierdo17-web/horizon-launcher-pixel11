@@ -272,6 +272,9 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         fun lockScreen(): Boolean =
             instance?.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) == true
 
+        /** Notifications, quick settings, recents, screenshot… False if the helper isn't on. */
+        fun globalAction(action: Int): Boolean = instance?.performGlobalAction(action) == true
+
         private const val BASE_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or

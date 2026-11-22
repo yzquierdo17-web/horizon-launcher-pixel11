@@ -111,6 +111,14 @@ class FlightRepository {
         return out
     }
 
+    /** Finds one flight by callsign anywhere in the world. Null if the network couldn't be reached. */
+    suspend fun byCallsign(callsign: String): List<Aircraft>? = withContext(Dispatchers.IO) {
+        val cs = callsign.trim().uppercase(Locale.ROOT)
+        val json = get("https://api.adsb.lol/v2/callsign/$cs") ?: get("https://api.airplanes.live/v2/callsign/$cs")
+            ?: return@withContext null
+        runCatching { parse(JSONObject(json)) }.getOrNull()
+    }
+
     /** Looks up routes for these flights (cached for 20 minutes). */
     suspend fun routesFor(planes: List<Aircraft>): Map<String, FlightRoute?> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
@@ -224,6 +232,15 @@ class FlightRepository {
         fun airlineOf(callsign: String): String? {
             if (callsign.length < 4 || !callsign.take(3).all { it.isLetter() } || !callsign[3].isDigit()) return null
             return AIRLINES[callsign.take(3).uppercase(Locale.ROOT)]
+        }
+
+        /** "UA 123", "ua123" or "UAL123" → "UAL123" (the callsign planes broadcast). */
+        fun callsignFor(input: String): String {
+            val t = input.uppercase(Locale.ROOT).filter { it.isLetterOrDigit() }
+            val m = Regex("^([A-Z0-9]{2})(\\d{1,4}[A-Z]?)$").find(t) ?: return t
+            val (iata, num) = m.destructured
+            val icao = IATA.entries.firstOrNull { it.value == iata }?.key ?: return t
+            return icao + num
         }
 
         /** Flight number people know, like "UA 123" for "UAL123". */

@@ -38,6 +38,11 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Shop
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.Checkbox
 import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.Person
@@ -263,7 +268,7 @@ private fun LauncherContent(
             }
             else -> {
                 scope.launch { drawer.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = 500f)) }
-                if (totalDy > 120f && drawer.value < 0.05f) expandNotifications(view)
+                if (totalDy > 120f && drawer.value < 0.05f) runGesture(view.context, vm, settings.gestureSwipeDown)
             }
         }
     }
@@ -294,6 +299,8 @@ private fun LauncherContent(
     // Today page: swipe right on the first Home page.
     val todayScope = rememberCoroutineScope()
     val today = remember { TodayController(todayScope) }
+    val todaySignal by vm.todaySignal.collectAsState()
+    LaunchedEffect(todaySignal) { if (todaySignal > 0) today.open() }
     LaunchedEffect(drawerOpen) { if (drawerOpen) today.close() }
 
     BackHandler(enabled = drawerOpen || openFolderId != null || pickerOpen || settingsOpen || overlay != null || today.visible) {
@@ -496,6 +503,9 @@ private fun LauncherContent(
             LauncherViewModel.Overlay.Radar -> OnSurface {
                 FlightRadarScreen(vm) { vm.showOverlay(null) }
             }
+            LauncherViewModel.Overlay.Customize -> OnSurface {
+                AppCustomizeScreen(vm) { vm.showOverlay(null) }
+            }
             LauncherViewModel.Overlay.Favorites -> OnSurface {
                 AppChecklistScreen(
                     title = "Favourites",
@@ -588,7 +598,7 @@ private fun HomeScreen(
     val haptic = LocalHapticFeedback.current
     val settings = LocalSettings.current
     // Read inside the long-lived gesture handler, so keep it current.
-    val doubleTapLockOn by rememberUpdatedState(settings.doubleTapLock)
+    val gestures by rememberUpdatedState(settings)
     var dragTotal by remember { mutableStateOf(0f) }
     val tracker = remember { VelocityTracker() }
     val swipe by rememberUpdatedState(onSwipe)
@@ -597,6 +607,11 @@ private fun HomeScreen(
     Box(
         modifier
             .fillMaxSize()
+            .twoFingerGestures(
+                onPinch = { runGesture(context, vm, gestures.gesturePinch) },
+                onTwoDown = { runGesture(context, vm, gestures.gestureTwoDown) },
+                onTwoUp = { runGesture(context, vm, gestures.gestureTwoUp) },
+            )
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = {
@@ -620,13 +635,7 @@ private fun HomeScreen(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
-                        if (doubleTapLockOn && !drag.itemPressed) {
-                            if (!IslandOverlayService.lockScreen()) {
-                                // The lock uses the island's helper; point the user to switch it on.
-                                vm.toast("Turn on Horizon in Accessibility to use double-tap to lock")
-                                context.startSafely(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                            }
-                        }
+                        if (!drag.itemPressed) runGesture(context, vm, gestures.gestureDoubleTap)
                     },
                     onLongPress = {
                         if (!drag.itemPressed) {
@@ -788,11 +797,12 @@ private fun HomePage(
                             if (app != null) {
                                 LauncherIcon(
                                     app = app,
-                                    label = if (LocalSettings.current.homeLabels) app.label else null,
+                                    label = if (LocalSettings.current.homeLabels && app.showLabel) app.label else null,
                                     drag = drag,
                                     payload = DragPayload.FromHome(item.id),
                                     onTap = { onLaunch(app) },
                                     menu = listOf(
+                                        MenuAction("Customize") { vm.customizeApp(app) },
                                         MenuAction("Remove") { vm.removeItem(item.id) },
                                         MenuAction("App info") { vm.openAppInfo(app) },
                                     ),
@@ -888,7 +898,6 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
     val time = now.format(DateTimeFormatter.ofPattern(timePattern))
     val dateOnly = now.format(DateTimeFormatter.ofPattern(if (compact) "EEE, MMM d" else "EEEE, MMMM d"))
     val date = if (weatherText != null) "$dateOnly   \u00B7   $weatherText" else dateOnly
-    val glance = remember(now) { atAGlance(context, timePattern) }
     val openClock = { context.startSafely(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
     val openCalendar = {
         context.startSafely(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALENDAR))
@@ -939,15 +948,8 @@ private fun ClockHeader(vm: LauncherViewModel, compact: Boolean, modifier: Modif
                 modifier = Modifier.clickable(onClick = openCalendar),
             )
         }
-        if (glance.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = glance.joinToString("   ·   "),
-                color = Color.White.copy(alpha = 0.8f),
-                style = TextStyle(fontFamily = LocalAppFont.current, fontSize = 14.sp, shadow = ClockShadow),
-                modifier = Modifier.clickable(onClick = openClock),
-            )
-        }
+        Spacer(Modifier.height(4.dp))
+        AtAGlance(vm, ClockShadow)
 
         // Weather needs a location (or a city in Settings); offer it once.
         if (settings.showWeather && weather == null && !settings.weatherPromptDone &&
@@ -1134,6 +1136,7 @@ private fun Dock(
                 payload = DragPayload.FromDock(i),
                 onTap = { onLaunch(app) },
                 menu = listOf(
+                    MenuAction("Customize") { vm.customizeApp(app) },
                     MenuAction("Remove from dock") { vm.removeFromDock(i) },
                     MenuAction("App info") { vm.openAppInfo(app) },
                 ),
@@ -1187,8 +1190,20 @@ private fun AppDrawer(
     val showTabs = query.isBlank()
     val hasProfile = work != null
     val paused = work?.paused == true
-    val tabApps = remember(apps, showTabs, workTab, workKeys) {
+    // Drawer groups (Social, Media, Games…) for the Personal tab.
+    var group by remember { mutableStateOf<String?>(null) }
+    val baseTab = remember(apps, showTabs, workTab, workKeys) {
         if (!showTabs) apps else apps.filter { it.onWork() == workTab }
+    }
+    val groups = remember(baseTab, settings.drawerGroups, workTab, settings.minimalMode) {
+        if (!settings.drawerGroups || workTab || settings.minimalMode) emptyList()
+        else baseTab.groupingBy { it.group }.eachCount().filter { it.value >= 2 }.keys
+            .map { AppGroup.byId(it) }.sortedBy { it.ordinal }
+            .takeIf { it.size >= 2 }.orEmpty()
+    }
+    if (group != null && groups.none { it.id == group }) group = null
+    val tabApps = remember(baseTab, showTabs, group) {
+        if (!showTabs || group == null) baseTab else baseTab.filter { it.group == group }
     }
     val filtered = remember(tabApps, query) { searchApps(tabApps, query) }
 
@@ -1206,21 +1221,42 @@ private fun AppDrawer(
         contactsGranted = granted
         vm.updateSettings { it.copy(contactsPromptDone = true) }
     }
+    val eventHits by produceState(emptyList<Meeting>(), query) {
+        value = if (query.trim().length < 2) emptyList() else withContext(Dispatchers.IO) { vm.calendar.search(query) }
+    }
+    val webHits by produceState(emptyList<String>(), query, settings.webSuggestions) {
+        value = emptyList()
+        if (settings.webSuggestions && query.trim().length >= 2) {
+            delay(250)
+            value = withContext(Dispatchers.IO) { webSuggestions(query) }
+        }
+    }
+    var mediaGranted by remember { mutableStateOf(hasMediaPermission(context)) }
+    val mediaPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
+        mediaGranted = r.values.any { it } || hasMediaPermission(context)
+    }
+    val mediaHits by produceState(emptyList<MediaHit>(), query, mediaGranted, settings.searchMedia) {
+        value = if (!settings.searchMedia || query.trim().length < 2) emptyList()
+        else withContext(Dispatchers.IO) { searchMedia(context, query) }
+    }
     val hiddenCount = settings.hidden.size
     // When the drawer opens, apps ripple in one after another (only on open, not while scrolling).
     val openedAt = remember { System.currentTimeMillis() }
 
     // Most-opened apps on top.
     val byKey = remember(apps) { apps.associateBy { it.key } }
-    val suggested = remember(byKey, usage, showTabs, workTab, settings.suggestions, workKeys) {
+    val hourly by vm.hourlyUsage.collectAsState()
+    val hourNow = remember { java.time.LocalTime.now().hour }
+    val suggested = remember(byKey, usage, hourly, showTabs, workTab, settings.suggestions, workKeys) {
         if (!settings.suggestions) emptyList()
-        else usage.entries.sortedByDescending { it.value }
-            .mapNotNull { byKey[it.key] }
+        else usage.keys.sortedByDescending { suggestionScore(it, usage, hourly, hourNow) }
+            .mapNotNull { byKey[it] }
             .filter { !it.isPaused && (!showTabs || it.onWork() == workTab) }
             .take(5)
     }
-    val showSuggestions = query.isBlank() && suggested.isNotEmpty()
-    val headerCount = if (showSuggestions) 2 else 0
+    val showSuggestions = query.isBlank() && suggested.isNotEmpty() && group == null
+    val showGroups = query.isBlank() && groups.isNotEmpty()
+    val headerCount = (if (showSuggestions) 2 else 0) + (if (showGroups) 1 else 0)
     val letterIndex = remember(filtered, query, headerCount) {
         if (query.isNotBlank()) emptyMap()
         else buildMap { filtered.forEachIndexed { i, app -> putIfAbsent(app.sectionLetter(), i + headerCount) } }
@@ -1408,6 +1444,11 @@ private fun AppDrawer(
                         }
                     }
                 }
+                if (showGroups) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "groups") {
+                        GroupChips(groups, group) { group = it }
+                    }
+                }
                 if (showSuggestions && !minimal) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "suggested") {
                         Row(Modifier.fillMaxWidth()) {
@@ -1454,9 +1495,48 @@ private fun AppDrawer(
                             ResultRow(Icons.Outlined.Settings, p.label, "Phone settings") { openSettingsPage(context, p) }
                         }
                     }
+                    if (eventHits.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "events-h") { ResultHeader("Calendar") }
+                        items(eventHits, key = { "e-${it.eventId}-${it.begin}" }, span = { GridItemSpan(maxLineSpan) }) { m ->
+                            ResultRow(Icons.Outlined.Event, m.title, eventWhen(m, context)) { vm.calendar.openEvent(m) }
+                        }
+                    }
+                    if (mediaHits.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "media-h") { ResultHeader("Photos, videos & music") }
+                        items(mediaHits, key = { "m-" + it.uri }, span = { GridItemSpan(maxLineSpan) }) { m ->
+                            ResultRow(
+                                when {
+                                    m.kind.startsWith("Photo") -> Icons.Outlined.Image
+                                    m.kind.startsWith("Video") -> Icons.Outlined.Movie
+                                    else -> Icons.Outlined.MusicNote
+                                },
+                                m.name, m.kind,
+                            ) { openMedia(context, m) }
+                        }
+                    } else if (settings.searchMedia && !mediaGranted && query.trim().length >= 2) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "media-ask") {
+                            ResultRow(Icons.Outlined.Image, "Search your photos, videos and music too", "Tap to allow", onDismiss = {
+                                vm.updateSettings { it.copy(searchMedia = false) }
+                            }) { mediaPermission.launch(mediaPermissions()) }
+                        }
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "web-h") { ResultHeader("Web") }
                     item(span = { GridItemSpan(maxLineSpan) }, key = "web") {
                         ResultRow(Icons.Filled.Search, "Search the web for \u201C${query.trim()}\u201D", null) {
                             context.startSafely(Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, query.trim()))
+                        }
+                    }
+                    items(webHits, key = { "w-$it" }, span = { GridItemSpan(maxLineSpan) }) { w ->
+                        ResultRow(Icons.Outlined.TravelExplore, w, null) {
+                            context.startSafely(Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, w))
+                        }
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "play") {
+                        ResultRow(Icons.Outlined.Shop, "Search Play Store for \u201C${query.trim()}\u201D", null) {
+                            val q = Uri.encode(query.trim())
+                            if (!context.startSafely(Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=$q&c=apps")))) {
+                                context.startSafely(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/search?q=$q&c=apps")))
+                            }
                         }
                     }
                 }
@@ -1607,7 +1687,7 @@ private fun DrawerAppIcon(
     val onWorkTab = app.isWork || app.key in LocalSettings.current.workApps
     LauncherIcon(
         app = app,
-        label = app.label,
+        label = if (app.showLabel) app.label else "",
         drag = drag,
         payload = DragPayload.FromDrawer(app.key),
         onTap = { onLaunch(app) },
@@ -1620,6 +1700,7 @@ private fun DrawerAppIcon(
             MenuAction(if (onWorkTab) "Remove from Work tab" else "Add to Work tab", enabled = !app.isWork) {
                 vm.setWorkApp(app.key, !onWorkTab)
             },
+            MenuAction("Customize") { vm.customizeApp(app) },
             MenuAction("Hide app") { vm.hideApp(app) },
             MenuAction("App info") { vm.openAppInfo(app) },
             MenuAction("Uninstall") {
@@ -1799,42 +1880,9 @@ private fun String.normalizeForSearch(): String =
         .replace(Regex("\\p{Mn}+"), "")
         .lowercase()
 
-fun Context.startSafely(intent: Intent) {
-    runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-}
+fun Context.startSafely(intent: Intent): Boolean =
+    runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
 
-/** Next alarm (if within a day) and charging status, for the line under the date. */
-private fun atAGlance(context: Context, timePattern: String): List<String> {
-    val parts = mutableListOf<String>()
-    runCatching {
-        val am = context.getSystemService(AlarmManager::class.java)
-        val next = am.nextAlarmClock
-        if (next != null) {
-            val millis = next.triggerTime - System.currentTimeMillis()
-            if (millis in 0..(24L * 60 * 60 * 1000)) {
-                val t = java.time.Instant.ofEpochMilli(next.triggerTime)
-                    .atZone(java.time.ZoneId.systemDefault())
-                    .format(DateTimeFormatter.ofPattern("$timePattern a".replace("HH:mm a", "HH:mm")))
-                parts += "Alarm $t"
-            }
-        }
-    }
-    runCatching {
-        val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        if (battery != null) {
-            val status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-            val level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-            val scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
-            val pct = if (level >= 0 && scale > 0) level * 100 / scale else -1
-            when {
-                status == BatteryManager.BATTERY_STATUS_CHARGING && pct >= 0 -> parts += "Charging · $pct%"
-                status == BatteryManager.BATTERY_STATUS_FULL -> parts += "Fully charged"
-                pct in 0..15 -> parts += "Battery $pct%"
-            }
-        }
-    }
-    return parts
-}
 
 internal fun View.tick() {
     performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -1846,14 +1894,6 @@ private fun View.confirm() {
     )
 }
 
-/** Swipe down on the home screen opens the notification shade. */
-@SuppressLint("WrongConstant")
-private fun expandNotifications(view: View) {
-    runCatching {
-        val service = view.context.getSystemService("statusbar")
-        Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(service)
-    }
-}
 
 
 /**

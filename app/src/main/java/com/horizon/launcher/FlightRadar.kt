@@ -202,6 +202,8 @@ fun FlightRadarScreen(vm: LauncherViewModel, onClose: () -> Unit) {
                 }
             }
 
+            item(key = "follow") { FollowFlightCard(vm, imperial) }
+
             item {
                 RadarScope(
                     state = state,
@@ -673,6 +675,115 @@ fun FlightsTodayCard(vm: LauncherViewModel, onOpen: () -> Unit) {
             RadarScope(
                 state = state, rangeNm = range.nm, rangeLabel = null, selected = null, trails = emptyMap(),
                 onSelect = null, modifier = Modifier.size(92.dp), compact = true,
+            )
+        }
+    }
+}
+
+
+/** Follow one flight by number from anywhere: where it is, how high, and a note when it lands. */
+@Composable
+private fun FollowFlightCard(vm: LauncherViewModel, imperial: Boolean) {
+    val settings by vm.settings.collectAsState()
+    val followed by vm.followed.collectAsState()
+    val context = LocalContext.current
+    var input by remember { mutableStateOf("") }
+    LaunchedEffect(settings.followFlight) {
+        if (settings.followFlight.isNotBlank()) while (true) { vm.refreshFollowedNow(); kotlinx.coroutines.delay(30_000) }
+    }
+    val notify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(LocalInk.current.copy(alpha = 0.06f)).padding(18.dp),
+    ) {
+        if (settings.followFlight.isBlank()) {
+            Text("Follow a flight", color = LocalInk.current, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text(
+                "Type a flight number, like UA 123. Horizon tells you when it lands.",
+                color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                singleLine = true,
+                placeholder = { Text("Flight number") },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Go,
+                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = {
+                    if (input.isNotBlank()) {
+                        if (android.os.Build.VERSION.SDK_INT >= 33) notify.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        vm.followFlight(input)
+                        input = ""
+                    }
+                }),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = LocalInk.current, unfocusedTextColor = LocalInk.current,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            return@Column
+        }
+        val name = FlightRepository.flightNumber(settings.followFlight) ?: settings.followFlight
+        val f = followed
+        val a = f?.aircraft
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Flight, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp).rotate(((a?.track ?: 90.0)).toFloat()))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Following $name", color = LocalInk.current, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                FlightRepository.airlineOf(settings.followFlight)?.let {
+                    Text(it, color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp)
+                }
+            }
+            Text(
+                "Stop",
+                color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clip(CircleShape).clickable { vm.stopFollowing() }.padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        val route = f?.route?.takeIf { it.plausible }
+        if (route != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(route.fromCode, color = LocalInk.current, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    route.fromCity?.let { Text(it, color = LocalInk.current.copy(alpha = 0.6f), fontSize = 12.sp, maxLines = 1) }
+                }
+                Icon(Icons.Outlined.Flight, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp).rotate(90f))
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Text(route.toCode, color = LocalInk.current, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    route.toCity?.let { Text(it, color = LocalInk.current.copy(alpha = 0.6f), fontSize = 12.sp, maxLines = 1) }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+        Text(
+            when {
+                f == null -> "Looking for $name…"
+                a == null -> "Not flying right now. Horizon keeps checking while your screen is on."
+                a.onGround -> "On the ground"
+                else -> listOfNotNull(
+                    fmtAltitude(a),
+                    fmtSpeed(a.speed, imperial),
+                    f.distanceNm?.let { fmtDistance(it, imperial) + " from you" },
+                ).joinToString("  ·  ")
+            },
+            color = LocalInk.current.copy(alpha = 0.8f), fontSize = 14.sp,
+        )
+        if (a != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Track on the map",
+                color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clip(CircleShape).clickable {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://globe.adsb.lol/?icao=${a.hex}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                }.padding(vertical = 4.dp),
             )
         }
     }

@@ -8,6 +8,7 @@ import android.content.ComponentName
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import java.util.Locale
 import android.content.IntentFilter
 import android.content.pm.LauncherApps
 import android.graphics.Bitmap
@@ -57,6 +58,12 @@ data class AppEntry(
     val isWork: Boolean = false,
     /** Work profile is paused: shown greyed out; tapping offers to turn work apps on. */
     val isPaused: Boolean = false,
+    /** False when you chose to hide this app's name under its icon. */
+    val showLabel: Boolean = true,
+    /** Drawer group: AppGroup id. */
+    val group: String = "other",
+    /** The app's own name, before any rename. */
+    val originalLabel: String = label,
 ) {
     val packageName: String get() = component.packageName
     val key: String get() = component.flattenToString() + "#" + serial
@@ -194,6 +201,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         meetingRefresh.value++
         refreshWeather()
         refreshNews()
+        refreshSports()
+        refreshStocks()
+        ensureFlightWatch()
         if (radarPaused && _overlay.value == Overlay.Radar) startRadar(radarRadius)
         radarPaused = false
         // Back from Android's install screen without updating: offer it again.
@@ -309,7 +319,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshNews(force: Boolean = false) {
         val s = _settings.value
         if (!s.showNews) { _news.value = emptyList(); newsKey = ""; return }
-        val key = s.newsTopics.sorted().joinToString() + "|" + s.newsFeeds.joinToString()
+        val key = s.newsTopics.sorted().joinToString() + "|" + s.newsFeeds.joinToString() + "|" + s.newsKeywords.joinToString()
         val stale = System.currentTimeMillis() - newsFetchedAt > 30 * 60_000L
         if (!force && !stale && key == newsKey) {
             _news.value = _news.value.filter { it.source !in s.newsHidden }
@@ -321,7 +331,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         _newsLoading.value = true
         viewModelScope.launch(Dispatchers.IO) {
             val list = runCatching {
-                newsRepo.load(s.newsTopics, s.newsFeeds, s.newsHidden, s.newsDismissed.toSet(), s.newsLikedSources)
+                newsRepo.load(s.newsTopics, s.newsFeeds, s.newsHidden, s.newsDismissed.toSet(), s.newsLikedSources, s.newsKeywords)
             }.getOrDefault(emptyList())
             if (list.isNotEmpty()) _news.value = list else newsFetchedAt = 0L // retry next time
             _newsLoading.value = false
@@ -432,6 +442,197 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (routes != null) _flights.value = _flights.value.copy(routes = _flights.value.routes + routes)
     }
 
+    // ---------- Following a flight, and planes overhead ----------
+
+    data class FollowedFlight(
+        val callsign: String,
+        val aircraft: Aircraft?,
+        val route: FlightRoute?,
+        /** Distance from you in nautical miles, when your position is known. */
+        val distanceNm: Double?,
+        val updatedAt: Long,
+        /** Looked, and it isn't flying right now. */
+        val notFlying: Boolean,
+    )
+
+    private val _followed = MutableStateFlow<FollowedFlight?>(null)
+    val followed: StateFlow<FollowedFlight?> = _followed.asStateFlow()
+    private var watchJob: kotlinx.coroutines.Job? = null
+    private var followAirborne = false
+    private val overheadSeen = HashMap<String, Long>()
+
+    /** Starts following a flight ("UA 123", "UAL123" or a registration). */
+    fun followFlight(input: String) {
+        val cs = FlightRepository.callsignFor(input)
+        if (cs.length < 3) return
+        followAirborne = false
+        _followed.value = null
+        updateSettings { it.copy(followFlight = cs) }
+        viewModelScope.launch { refreshFollowed() }
+        ensureFlightWatch()
+    }
+
+    fun stopFollowing() {
+        updateSettings { it.copy(followFlight = "") }
+        _followed.value = null
+        followAirborne = false
+    }
+
+    fun refreshFollowedNow() {
+        viewModelScope.launch { refreshFollowed() }
+    }
+
+    private suspend fun refreshFollowed() {
+        val cs = _settings.value.followFlight
+        if (cs.isBlank()) { _followed.value = null; return }
+        val found = flightRepo.byCallsign(cs) ?: return // network trouble: keep what we had
+        val a = found.maxByOrNull { it.seenAt }
+        val center = _flights.value.center ?: runCatching { weatherRepo.coordinates(_settings.value.weatherCity) }.getOrNull()?.let { it.first to it.second }
+        val route = a?.let { runCatching { flightRepo.routesFor(listOf(it))[it.callsign] }.getOrNull() }
+        val dist = if (a != null && center != null) FlightRepository.distanceNm(center.first, center.second, a.lat, a.lon) else null
+        val before = _followed.value
+        _followed.value = FollowedFlight(cs, a, route ?: before?.route, dist, System.currentTimeMillis(), notFlying = a == null || a.onGround)
+        // Landing: it was in the air, now it's on the ground (or gone after coming down low).
+        val airborne = a != null && !a.onGround && (a.altitude ?: 0) > 1500
+        val lowBefore = before?.aircraft?.let { (it.altitude ?: 0) < 4000 } == true
+        if (airborne) followAirborne = true
+        else if (followAirborne && (a?.onGround == true || (a == null && lowBefore))) {
+            followAirborne = false
+            val name = FlightRepository.flightNumber(cs) ?: cs
+            val where = (route ?: before?.route)?.takeIf { it.plausible }?.let { r -> " in ${r.toCity ?: r.toCode}" }.orEmpty()
+            notifyFlight(cs.hashCode(), "$name has landed$where", "Tap to open the flight radar")
+        }
+    }
+
+    /** Checks once a minute while your screen is on, only when you follow a flight or want overhead alerts. */
+    fun ensureFlightWatch() {
+        val s = _settings.value
+        if (!s.overheadAlerts && s.followFlight.isBlank()) { watchJob?.cancel(); watchJob = null; return }
+        if (watchJob?.isActive == true) return
+        val power = getApplication<Application>().getSystemService(android.os.PowerManager::class.java)
+        watchJob = viewModelScope.launch {
+            while (true) {
+                val st = _settings.value
+                if (!st.overheadAlerts && st.followFlight.isBlank()) break
+                if (power?.isInteractive != false) {
+                    if (st.followFlight.isNotBlank()) runCatching { refreshFollowed() }
+                    if (st.overheadAlerts) runCatching { checkOverhead() }
+                }
+                delay(60_000)
+            }
+            watchJob = null
+        }
+    }
+
+    private suspend fun checkOverhead() {
+        val c = runCatching { weatherRepo.coordinates(_settings.value.weatherCity) }.getOrNull() ?: return
+        val planes = flightRepo.nearby(c.first, c.second, 4) ?: return
+        val now = System.currentTimeMillis()
+        overheadSeen.entries.removeAll { now - it.value > 40 * 60_000L }
+        val low = planes.filter {
+            !it.onGround && (it.altitude ?: 99_999) in 300..15_000 &&
+                FlightRepository.distanceNm(c.first, c.second, it.lat, it.lon) <= 2.5 && it.hex !in overheadSeen
+        }.minByOrNull { FlightRepository.distanceNm(c.first, c.second, it.lat, it.lon) } ?: return
+        overheadSeen[low.hex] = now
+        val route = runCatching { flightRepo.routesFor(listOf(low))[low.callsign] }.getOrNull()?.takeIf { it.plausible }
+        val name = FlightRepository.flightNumber(low.callsign) ?: low.displayName
+        val who = FlightRepository.airlineOf(low.callsign) ?: low.description ?: low.type
+        val bits = listOfNotNull(
+            route?.let { "${it.fromCode} → ${it.toCode}" },
+            low.altitude?.let { "%,d ft".format(Locale.getDefault(), it) },
+            who,
+        )
+        notifyFlight(low.hex.hashCode(), "$name is flying over you", bits.joinToString(" · "))
+    }
+
+    private fun notifyFlight(id: Int, title: String, text: String) {
+        val ctx = getApplication<Application>()
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+        val nm = ctx.getSystemService(android.app.NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(
+            android.app.NotificationChannel("flights", "Flights", android.app.NotificationManager.IMPORTANCE_DEFAULT)
+                .apply { description = "Planes over you and flights you follow" },
+        )
+        val open = android.app.PendingIntent.getActivity(
+            ctx, 7,
+            Intent(ctx, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN, "radar").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = androidx.core.app.NotificationCompat.Builder(ctx, "flights")
+            .setSmallIcon(R.drawable.ic_stat_plane)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        runCatching { nm.notify(id, n) }
+    }
+
+    // ---------- Sports and stocks ----------
+
+    val sportsRepo = SportsRepository()
+    val stocksRepo = StocksRepository()
+    private val _games = MutableStateFlow<List<Game>>(emptyList())
+    val games: StateFlow<List<Game>> = _games.asStateFlow()
+    private val _quotes = MutableStateFlow<List<Quote>>(emptyList())
+    val quotes: StateFlow<List<Quote>> = _quotes.asStateFlow()
+    private var gamesAt = 0L
+    private var quotesAt = 0L
+    private var gamesKey = ""
+    private var quotesKey = ""
+
+    /** Every minute while a game is on, otherwise every 10 minutes. */
+    fun refreshSports(force: Boolean = false) {
+        val teams = _settings.value.sportsTeams.mapNotNull { FollowedTeam.decode(it) }
+        if (teams.isEmpty()) { _games.value = emptyList(); gamesKey = ""; return }
+        val key = teams.joinToString { it.id + it.league }
+        val every = if (_games.value.any { it.live }) 60_000L else 10 * 60_000L
+        if (!force && key == gamesKey && System.currentTimeMillis() - gamesAt < every) return
+        gamesKey = key
+        gamesAt = System.currentTimeMillis()
+        viewModelScope.launch {
+            val g = sportsRepo.games(teams)
+            if (g.isNotEmpty() || _games.value.isEmpty()) _games.value = g else gamesAt = 0L
+        }
+    }
+
+    /** Every 5 minutes. */
+    fun refreshStocks(force: Boolean = false) {
+        val list = _settings.value.stocks
+        if (list.isEmpty()) { _quotes.value = emptyList(); quotesKey = ""; return }
+        val key = list.joinToString()
+        if (!force && key == quotesKey && System.currentTimeMillis() - quotesAt < 5 * 60_000L) return
+        quotesKey = key
+        quotesAt = System.currentTimeMillis()
+        viewModelScope.launch {
+            val q = stocksRepo.quotes(list)
+            if (q.isNotEmpty()) _quotes.value = list.mapNotNull { s -> q.firstOrNull { it.symbol.equals(s, true) } } .ifEmpty { q }
+            else quotesAt = 0L
+        }
+    }
+
+    fun addStock(text: String) {
+        viewModelScope.launch {
+            val sym = stocksRepo.lookup(text)
+            if (sym == null) { toast("Couldn't find \u201C${text.trim()}\u201D"); return@launch }
+            updateSettings { if (sym in it.stocks) it else it.copy(stocks = it.stocks + sym) }
+            refreshStocks(force = true)
+        }
+    }
+
+    // ---------- Discover extras ----------
+
+    fun toggleSaved(story: NewsStory) {
+        val saved = _settings.value.newsSaved.any { it.link == story.link }
+        updateSettings {
+            if (saved) it.copy(newsSaved = it.newsSaved.filter { s -> s.link != story.link })
+            else it.copy(newsSaved = (it.newsSaved + story).takeLast(200))
+        }
+        toast(if (saved) "Removed from Saved" else "Saved for later")
+    }
+
     // ---------- Focus ----------
 
     /** On by hand, or automatically during work hours if you chose that. */
@@ -520,13 +721,23 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             .flatMap { user -> launcherApps.getActivityList(null, user) }
             .filter { it.componentName.packageName != ctx.packageName }
             .map { info ->
+                val serialNo = userManager.getSerialNumberForUser(info.user)
+                val appKey = info.componentName.flattenToString() + "#" + serialNo
+                val custom = s.appIcons[appKey]?.let { name ->
+                    runCatching {
+                        android.graphics.BitmapFactory.decodeFile(java.io.File(ctx.filesDir, "app_icons/$name").path)
+                    }.getOrNull()?.let { renderer.custom(it) }
+                }
                 AppEntry(
-                    label = info.label.toString(),
+                    label = s.appNames[appKey]?.takeIf { it.isNotBlank() } ?: info.label.toString(),
+                    originalLabel = info.label.toString(),
+                    showLabel = appKey !in s.noLabel,
+                    group = AppGroup.of(info.applicationInfo, info.user != me).id,
                     component = info.componentName,
                     user = info.user,
                     serial = userManager.getSerialNumberForUser(info.user),
-                    icon = run {
-                        val serial = userManager.getSerialNumberForUser(info.user)
+                    icon = custom?.asImageBitmap() ?: run {
+                        val serial = serialNo
                         val key = "${info.componentName.flattenToString()}#$serial|${info.applicationInfo.sourceDir}|$style"
                         usedKeys += key
                         iconCache.getOrPut(key) {
@@ -567,6 +778,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                         else -> item.copy(apps = rest)
                     }
                 }
+                // Widgets that no longer exist (for example after moving to a new phone).
+                TYPE_WIDGET -> {
+                    val alive = (listOf(item.widgetId) + item.stack).filter { id -> widgetManager.getAppWidgetInfo(id) != null }
+                    when {
+                        alive.isEmpty() -> null
+                        alive.first() == item.widgetId && alive.size == 1 + item.stack.size -> item
+                        else -> item.copy(widgetId = alive.first(), stack = alive.drop(1))
+                    }
+                }
                 else -> item
             }
         }
@@ -585,7 +805,17 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { runCatching { launcherApps.startMainActivity(app.component, app.user, null, null) } }
     }
 
+    private val _hourlyUsage = MutableStateFlow(decodeUsage(prefs.getString(KEY_USAGE_HOURS, null)))
+    /** Launch counts per app and time of day ("key@bucket"), so suggestions follow your day. */
+    val hourlyUsage: StateFlow<Map<String, Int>> = _hourlyUsage.asStateFlow()
+
     private fun recordLaunch(key: String) {
+        val h = _hourlyUsage.value.toMutableMap()
+        val hk = key + "@" + hourBucket(java.time.LocalTime.now().hour)
+        h[hk] = (h[hk] ?: 0) + 1
+        val ht = h.entries.sortedByDescending { it.value }.take(600).associate { it.key to it.value }
+        _hourlyUsage.value = ht
+        prefs.edit().putString(KEY_USAGE_HOURS, JSONObject(ht as Map<*, *>).toString()).apply()
         val counts = _usage.value.toMutableMap()
         counts[key] = (counts[key] ?: 0) + 1
         val trimmed = counts.entries.sortedByDescending { it.value }.take(200).associate { it.key to it.value }
@@ -595,7 +825,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearSuggestions() {
         _usage.value = emptyMap()
-        prefs.edit().remove(KEY_USAGE).apply()
+        _hourlyUsage.value = emptyMap()
+        prefs.edit().remove(KEY_USAGE).remove(KEY_USAGE_HOURS).apply()
     }
 
     private fun decodeUsage(json: String?): Map<String, Int> = runCatching {
@@ -615,22 +846,43 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (new == old) return
         _settings.value = new
         prefs.edit().putString(KEY_SETTINGS, new.toJson().toString()).apply()
-        if (old.themedIcons != new.themedIcons || old.iconShape != new.iconShape || old.iconPack != new.iconPack) refresh()
+        if (old.themedIcons != new.themedIcons || old.iconShape != new.iconShape || old.iconPack != new.iconPack ||
+            old.appNames != new.appNames || old.appIcons != new.appIcons || old.noLabel != new.noLabel
+        ) refresh()
         if (old.showWeather != new.showWeather || old.weatherCity != new.weatherCity || old.weatherUnit != new.weatherUnit) {
             refreshWeather(force = true)
         }
-        if (old.showNews != new.showNews || old.newsTopics != new.newsTopics || old.newsFeeds != new.newsFeeds) {
+        if (old.showNews != new.showNews || old.newsTopics != new.newsTopics || old.newsFeeds != new.newsFeeds ||
+            old.newsKeywords != new.newsKeywords
+        ) {
             refreshNews(force = true)
         }
+        if (old.sportsTeams != new.sportsTeams) refreshSports(force = true)
+        if (old.stocks != new.stocks) refreshStocks(force = true)
+        if (old.overheadAlerts != new.overheadAlerts || old.followFlight != new.followFlight) ensureFlightWatch()
     }
 
-    fun exportLayout(): String = JSONObject()
-        .put("app", "Horizon")
-        .put("version", 1)
-        .put("items", JSONArray(encodeItems(_items.value)))
-        .put("dock", JSONArray(_dock.value))
-        .put("settings", _settings.value.toJson())
-        .toString(2)
+    fun exportLayout(): String {
+        // Your own app icons go in the file too, so a restore brings them back.
+        val icons = JSONObject()
+        val dir = java.io.File(getApplication<Application>().filesDir, "app_icons")
+        _settings.value.appIcons.values.forEach { name ->
+            runCatching {
+                val f = java.io.File(dir, name)
+                if (f.exists()) icons.put(name, android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP))
+            }
+        }
+        return JSONObject()
+            .put("app", "Horizon")
+            .put("version", 2)
+            .put("items", JSONArray(encodeItems(_items.value)))
+            .put("dock", JSONArray(_dock.value))
+            .put("settings", _settings.value.toJson())
+            .put("usage", JSONObject(_usage.value as Map<*, *>))
+            .put("usageHours", JSONObject(_hourlyUsage.value as Map<*, *>))
+            .put("icons", icons)
+            .toString(2)
+    }
 
     fun importLayout(text: String): Boolean = runCatching {
         val o = JSONObject(text)
@@ -639,6 +891,23 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val dock = decodeKeys(o.getJSONArray("dock").toString())
         setItems(items)
         setDock(dock)
+        o.optJSONObject("icons")?.let { icons ->
+            val dir = java.io.File(getApplication<Application>().filesDir, "app_icons").apply { mkdirs() }
+            icons.keys().forEach { name ->
+                runCatching {
+                    if (!name.contains('/')) java.io.File(dir, name).writeBytes(android.util.Base64.decode(icons.getString(name), android.util.Base64.NO_WRAP))
+                }
+            }
+        }
+        o.optJSONObject("usage")?.let { u ->
+            val m = decodeUsage(u.toString())
+            _usage.value = m
+            prefs.edit().putString(KEY_USAGE, u.toString()).apply()
+        }
+        o.optJSONObject("usageHours")?.let { u ->
+            _hourlyUsage.value = decodeUsage(u.toString())
+            prefs.edit().putString(KEY_USAGE_HOURS, u.toString()).apply()
+        }
         o.optJSONObject("settings")?.let { js -> updateSettings { LauncherSettings.fromJson(js) } }
         val list = _apps.value
         if (list.isNotEmpty()) cleanup(list)
@@ -673,6 +942,49 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Overlays ----------
 
+    // ---------- Per-app tweaks ----------
+
+    private val _customizing = MutableStateFlow<AppEntry?>(null)
+    val customizing: StateFlow<AppEntry?> = _customizing.asStateFlow()
+
+    fun customizeApp(app: AppEntry) {
+        _customizing.value = app
+        showOverlay(Overlay.Customize)
+    }
+
+    /** Saves a picture as this app's icon (kept in Horizon's own storage). */
+    fun setAppIcon(key: String, uri: android.net.Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ctx = getApplication<Application>()
+            val ok = runCatching {
+                val dir = java.io.File(ctx.filesDir, "app_icons").apply { mkdirs() }
+                val name = Integer.toHexString(key.hashCode()) + "-" + System.currentTimeMillis() + ".png"
+                val src = ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) } ?: return@runCatching false
+                val side = minOf(src.width, src.height)
+                val scale = 256f / side
+                val small = android.graphics.Bitmap.createScaledBitmap(src, (src.width * scale).toInt().coerceAtLeast(1), (src.height * scale).toInt().coerceAtLeast(1), true)
+                java.io.File(dir, name).outputStream().use { small.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                _settings.value.appIcons[key]?.let { java.io.File(dir, it).delete() }
+                withContext(Dispatchers.Main) { updateSettings { it.copy(appIcons = it.appIcons + (key to name)) } }
+                true
+            }.getOrDefault(false)
+            if (!ok) withContext(Dispatchers.Main) { toast("Couldn't use that picture") }
+        }
+    }
+
+    fun resetApp(key: String) {
+        _settings.value.appIcons[key]?.let { java.io.File(getApplication<Application>().filesDir, "app_icons/$it").delete() }
+        updateSettings { it.copy(appNames = it.appNames - key, appIcons = it.appIcons - key, noLabel = it.noLabel - key) }
+    }
+
+    private val _todaySignal = MutableStateFlow(0)
+    /** Goes up by one each time something asks for the Today page. */
+    val todaySignal: StateFlow<Int> = _todaySignal.asStateFlow()
+    fun openToday() {
+        _drawerOpen.value = false
+        _todaySignal.value++
+    }
+
     fun openDrawer(focusSearch: Boolean = false) {
         _searchFocus.value = focusSearch
         _drawerOpen.value = true
@@ -696,7 +1008,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Full-screen helpers opened from the add wheel (or Settings, for Icon style). */
-    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites, ClockFaces, Radar }
+    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites, ClockFaces, Radar, Customize }
 
     /** Choose the clock face (keeps the older Compact / Dial switches in step). */
     fun setClockFace(face: ClockFace) = updateSettings {
@@ -983,6 +1295,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         private const val KEY_DOCK = "dock_keys"
         private const val KEY_SETTINGS = "settings"
         private const val KEY_USAGE = "usage"
+        private const val KEY_USAGE_HOURS = "usage_hours"
         private val DEFAULT_DOCK = listOf(
             "com.google.android.dialer",
             "com.google.android.apps.messaging",

@@ -96,6 +96,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         val alreadyOnTop = hasWindowFocus()
         super.onNewIntent(intent)
+        // Tapping a flight notification opens the radar.
+        if (intent.getStringExtra(EXTRA_OPEN) == "radar") {
+            vm.showOverlay(LauncherViewModel.Overlay.Radar)
+            return
+        }
         vm.onHomePressed(alreadyOnTop)
     }
 
@@ -178,6 +183,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        const val EXTRA_OPEN = "horizon_open"
         private const val KEY_PENDING = "pending_widget"
         private const val REQ_BIND = 11
         private const val REQ_CONFIGURE = 12

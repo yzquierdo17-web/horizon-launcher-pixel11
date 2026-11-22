@@ -357,6 +357,10 @@ fun TodayPage(
                 }
             }
 
+            if (settings.showNowPlaying) item(key = "now-playing") { NowPlayingCard() }
+            if (settings.sportsTeams.isNotEmpty()) item(key = "sports") { SportsCard(vm) }
+            if (settings.stocks.isNotEmpty()) item(key = "stocks") { StocksCard(vm) }
+
             if (settings.showFlights) item(key = "flights") {
                 FlightsTodayCard(vm) { vm.showOverlay(LauncherViewModel.Overlay.Radar) }
             }

@@ -197,6 +197,17 @@ class IconRenderer(
         return if (info.user == me) base else badge(base, info)
     }
 
+    /** A picture you picked for an app: cropped to a square and cut to the icon shape. */
+    fun custom(src: Bitmap): Bitmap {
+        val side = minOf(src.width, src.height)
+        val sq = Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+        val out = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        c.clipPath(if (shape == IconShape.System) IconShape.Squircle.path(px.toFloat()) else clip)
+        c.drawBitmap(sq, null, android.graphics.Rect(0, 0, px, px), paint)
+        return out
+    }
+
     /** The phone's shape for "Phone default", otherwise the chosen shape. */
     private fun styled(d: Drawable): Bitmap? {
         if (shape == IconShape.System && d !is AdaptiveIconDrawable) return null

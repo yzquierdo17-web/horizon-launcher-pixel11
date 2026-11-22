@@ -70,6 +70,7 @@ class NewsRepository(private val context: Context) {
         hiddenSources: Set<String>,
         dismissed: Set<String>,
         likedSources: Set<String>,
+        keywords: List<String> = emptyList(),
     ): List<NewsStory> = withContext(Dispatchers.IO) {
         val locale = Locale.getDefault()
         val lang = locale.language.ifBlank { "en" }
@@ -81,6 +82,8 @@ class NewsRepository(private val context: Context) {
             val google = if (t.section == null) "https://news.google.com/rss?$region"
             else "https://news.google.com/rss/headlines/section/topic/${t.section}?$region"
             listOf(google to t.label) + (if (english) PUBLISHERS[t].orEmpty() else emptyList()).map { it to t.label }
+        } + keywords.filter { it.isNotBlank() }.map { k ->
+            "https://news.google.com/rss/search?q=${enc(k.trim())}+when:3d&$region" to k.trim()
         } + customFeeds.filter { it.isNotBlank() }.map { it.trim().replaceFirst("http://", "https://") to "Your feeds" }
 
         val all = coroutineScope {

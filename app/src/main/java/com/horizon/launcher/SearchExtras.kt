@@ -215,3 +215,91 @@ private fun firstNumber(context: Context, contactId: Long): String? = runCatchin
         "${ContactsContract.CommonDataKinds.Phone.IS_SUPER_PRIMARY} DESC",
     )?.use { if (it.moveToFirst()) it.getString(0) else null }
 }.getOrNull()
+
+// ---------- Web suggestions ----------
+
+/** What people search for that starts like this (Google's public suggestion list). */
+fun webSuggestions(query: String): List<String> = runCatching {
+    val q = query.trim()
+    if (q.length < 2) return emptyList()
+    val lang = Locale.getDefault().language.ifBlank { "en" }
+    val url = java.net.URL(
+        "https://suggestqueries.google.com/complete/search?client=firefox&hl=$lang&q=" + java.net.URLEncoder.encode(q, "UTF-8"),
+    )
+    val c = url.openConnection() as java.net.HttpURLConnection
+    c.connectTimeout = 4000
+    c.readTimeout = 4000
+    val text = try { c.inputStream.bufferedReader().use { it.readText() } } finally { c.disconnect() }
+    val arr = org.json.JSONArray(text).getJSONArray(1)
+    (0 until arr.length()).map { arr.getString(it) }
+        .filter { !it.equals(q, ignoreCase = true) }
+        .take(4)
+}.getOrDefault(emptyList())
+
+// ---------- Photos, videos and music ----------
+
+data class MediaHit(val name: String, val kind: String, val uri: Uri, val mime: String?)
+
+fun mediaPermissions(): Array<String> =
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+        arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
+    } else {
+        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+fun hasMediaPermission(context: Context): Boolean =
+    mediaPermissions().any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED } ||
+        (android.os.Build.VERSION.SDK_INT >= 34 &&
+            ContextCompat.checkSelfPermission(context, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED)
+
+/** Photos, videos and songs whose file name, title or artist matches. */
+fun searchMedia(context: Context, query: String): List<MediaHit> {
+    val q = query.trim()
+    if (q.length < 2 || !hasMediaPermission(context)) return emptyList()
+    val out = mutableListOf<MediaHit>()
+    val sources = listOf(
+        Triple(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "Photo", null),
+        Triple(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "Video", null),
+        Triple(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, "Song", android.provider.MediaStore.Audio.Media.ARTIST),
+    )
+    for ((base, kind, extra) in sources) {
+        runCatching {
+            val name = android.provider.MediaStore.MediaColumns.DISPLAY_NAME
+            val title = android.provider.MediaStore.MediaColumns.TITLE
+            val cols = listOfNotNull(android.provider.MediaStore.MediaColumns._ID, name, title, android.provider.MediaStore.MediaColumns.MIME_TYPE, extra)
+            val where = buildString {
+                append("$name LIKE ? OR $title LIKE ?")
+                if (extra != null) append(" OR $extra LIKE ?")
+            }
+            val args = Array(if (extra != null) 3 else 2) { "%$q%" }
+            context.contentResolver.query(
+                base, cols.toTypedArray(), where, args,
+                "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC",
+            )?.use { c ->
+                var n = 0
+                while (c.moveToNext() && n < 4) {
+                    val id = c.getLong(0)
+                    val t = c.getString(2)?.takeIf { it.isNotBlank() } ?: c.getString(1).orEmpty()
+                    val artist = if (extra != null) c.getString(4)?.takeIf { it.isNotBlank() && it != "<unknown>" } else null
+                    out += MediaHit(
+                        name = t,
+                        kind = if (artist != null) "$kind · $artist" else kind,
+                        uri = android.content.ContentUris.withAppendedId(base, id),
+                        mime = c.getString(3),
+                    )
+                    n++
+                }
+            }
+        }
+    }
+    return out.take(8)
+}
+
+fun openMedia(context: Context, hit: MediaHit) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW).setDataAndType(hit.uri, hit.mime ?: "*/*")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}

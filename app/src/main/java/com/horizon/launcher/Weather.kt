@@ -51,7 +51,7 @@ class WeatherRepository(private val context: Context) {
         val json = get(
             "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
                 "&current=temperature_2m,weather_code,is_day" +
-                "&hourly=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min" +
+                "&hourly=temperature_2m,weather_code,is_day,precipitation_probability&daily=temperature_2m_max,temperature_2m_min" +
                 "&forecast_days=2&timezone=auto&temperature_unit=$unit",
         ) ?: return null
         val root = JSONObject(json)
@@ -62,6 +62,7 @@ class WeatherRepository(private val context: Context) {
             val temps = h.optJSONArray("temperature_2m")
             val codes = h.optJSONArray("weather_code")
             val days = h.optJSONArray("is_day")
+            val rain = h.optJSONArray("precipitation_probability")
             if (times == null || temps == null || codes == null) emptyList()
             else (0 until times.length())
                 .filter { times.getString(it) > nowStamp }
@@ -72,6 +73,7 @@ class WeatherRepository(private val context: Context) {
                         temp = temps.optDouble(i).roundToInt(),
                         code = codes.optInt(i),
                         isDay = (days?.optInt(i, 1) ?: 1) == 1,
+                        rain = rain?.optInt(i, 0) ?: 0,
                     )
                 }
         }.orEmpty()
@@ -164,4 +166,11 @@ class WeatherRepository(private val context: Context) {
 }
 
 /** One hour of the forecast. */
-data class HourWeather(val hour: Int, val temp: Int, val code: Int, val isDay: Boolean)
+data class HourWeather(
+    val hour: Int,
+    val temp: Int,
+    val code: Int,
+    val isDay: Boolean,
+    /** Chance of rain or snow, 0–100. */
+    val rain: Int = 0,
+)

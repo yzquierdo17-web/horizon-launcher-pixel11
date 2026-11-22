@@ -232,6 +232,36 @@ data class LauncherSettings(
     val showFlights: Boolean = true,
     /** Radar range step, 0..3 (see FlightRadar ranges). */
     val flightRange: Int = 1,
+    /** What each home-screen gesture does (GestureAction ids, or "app:<key>"). */
+    val gestureSwipeDown: String = "notifications",
+    val gestureDoubleTap: String = "lock",
+    val gesturePinch: String = "none",
+    val gestureTwoDown: String = "quicksettings",
+    val gestureTwoUp: String = "none",
+    /** Per-app changes: new names, custom icon files, apps without a label. */
+    val appNames: Map<String, String> = emptyMap(),
+    val appIcons: Map<String, String> = emptyMap(),
+    val noLabel: Set<String> = emptySet(),
+    /** Group chips (Social, Media, Games…) in the app drawer. */
+    val drawerGroups: Boolean = true,
+    /** Search suggestions from the web while typing. */
+    val webSuggestions: Boolean = true,
+    /** Look through photos, videos and music when searching. */
+    val searchMedia: Boolean = false,
+    /** Now Playing card on the Today page. */
+    val showNowPlaying: Boolean = true,
+    /** Followed teams: "sport/league|teamId|abbr|name". */
+    val sportsTeams: List<String> = emptyList(),
+    /** Stock tickers to watch. */
+    val stocks: List<String> = emptyList(),
+    /** Keywords you follow in Discover. */
+    val newsKeywords: List<String> = emptyList(),
+    /** Stories saved for later. */
+    val newsSaved: List<NewsStory> = emptyList(),
+    /** Notify when a plane flies low right over you. */
+    val overheadAlerts: Boolean = false,
+    /** Callsign of the flight you're following, like "UAL123". */
+    val followFlight: String = "",
 ) {
     fun isWorkTime(now: java.time.LocalDateTime): Boolean {
         if (!workHours || now.dayOfWeek.value !in workDays) return false
@@ -289,6 +319,24 @@ data class LauncherSettings(
         .put("newsDismissed", JSONArray(newsDismissed))
         .put("flights", showFlights)
         .put("flightRange", flightRange)
+        .put("gDown", gestureSwipeDown)
+        .put("gDouble", gestureDoubleTap)
+        .put("gPinch", gesturePinch)
+        .put("gTwoDown", gestureTwoDown)
+        .put("gTwoUp", gestureTwoUp)
+        .put("appNames", JSONObject(appNames as Map<*, *>))
+        .put("appIcons", JSONObject(appIcons as Map<*, *>))
+        .put("noLabel", JSONArray(noLabel.toList()))
+        .put("drawerGroups", drawerGroups)
+        .put("webSuggest", webSuggestions)
+        .put("searchMedia", searchMedia)
+        .put("nowPlaying", showNowPlaying)
+        .put("sports", JSONArray(sportsTeams))
+        .put("stocks", JSONArray(stocks))
+        .put("newsKeywords", JSONArray(newsKeywords))
+        .put("newsSaved", JSONArray(newsSaved.map { storyToJson(it) }))
+        .put("overhead", overheadAlerts)
+        .put("followFlight", followFlight)
 
     companion object {
         fun fromJson(o: JSONObject?): LauncherSettings {
@@ -353,6 +401,24 @@ data class LauncherSettings(
                 newsDismissed = o.optJSONArray("newsDismissed")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
                 showFlights = o.optBoolean("flights", true),
                 flightRange = o.optInt("flightRange", 1).coerceIn(0, 3),
+                gestureSwipeDown = o.optString("gDown", "notifications"),
+                gestureDoubleTap = o.optString("gDouble", if (o.optBoolean("dtLock", true)) "lock" else "none"),
+                gesturePinch = o.optString("gPinch", "none"),
+                gestureTwoDown = o.optString("gTwoDown", "quicksettings"),
+                gestureTwoUp = o.optString("gTwoUp", "none"),
+                appNames = o.optJSONObject("appNames").toStringMap(),
+                appIcons = o.optJSONObject("appIcons").toStringMap(),
+                noLabel = o.optJSONArray("noLabel").toStringList().toSet(),
+                drawerGroups = o.optBoolean("drawerGroups", true),
+                webSuggestions = o.optBoolean("webSuggest", true),
+                searchMedia = o.optBoolean("searchMedia", false),
+                showNowPlaying = o.optBoolean("nowPlaying", true),
+                sportsTeams = o.optJSONArray("sports").toStringList(),
+                stocks = o.optJSONArray("stocks").toStringList(),
+                newsKeywords = o.optJSONArray("newsKeywords").toStringList(),
+                newsSaved = o.optJSONArray("newsSaved")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let(::storyFromJson) } } ?: emptyList(),
+                overheadAlerts = o.optBoolean("overhead", false),
+                followFlight = o.optString("followFlight", ""),
             )
         }
     }
@@ -366,4 +432,28 @@ fun formatMinute(minuteOfDay: Int, is24h: Boolean): String {
     val m = minuteOfDay % 60
     return if (is24h) "%02d:%02d".format(h, m)
     else "%d:%02d %s".format(if (h % 12 == 0) 12 else h % 12, m, if (h < 12) "AM" else "PM")
+}
+
+
+private fun JSONObject?.toStringMap(): Map<String, String> =
+    if (this == null) emptyMap() else keys().asSequence().associateWith { optString(it) }
+
+private fun JSONArray?.toStringList(): List<String> =
+    if (this == null) emptyList() else (0 until length()).map { optString(it) }.filter { it.isNotEmpty() }
+
+fun storyToJson(s: NewsStory): JSONObject = JSONObject()
+    .put("t", s.title).put("s", s.source).put("l", s.link).put("p", s.published)
+    .put("i", s.imageUrl ?: "").put("w", s.sourceSite ?: "").put("c", s.topic)
+
+fun storyFromJson(o: JSONObject): NewsStory? {
+    val link = o.optString("l").takeIf { it.isNotEmpty() } ?: return null
+    return NewsStory(
+        title = o.optString("t"),
+        source = o.optString("s"),
+        link = link,
+        published = o.optLong("p"),
+        imageUrl = o.optString("i").takeIf { it.isNotEmpty() },
+        sourceSite = o.optString("w").takeIf { it.isNotEmpty() },
+        topic = o.optString("c"),
+    )
 }

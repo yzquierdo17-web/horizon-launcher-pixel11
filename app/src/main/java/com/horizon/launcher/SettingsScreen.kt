@@ -212,19 +212,6 @@ fun SettingsScreen(
                 }
             }
             item {
-                ToggleRow(
-                    "Double-tap to lock",
-                    if (IslandOverlayService.isEnabled(context)) "Double-tap empty space on Home to turn the screen off"
-                    else "Needs Horizon turned on in Accessibility (the same helper as the Dynamic Island)",
-                    s.doubleTapLock,
-                ) { v ->
-                    vm.updateSettings { it.copy(doubleTapLock = v) }
-                    if (v && !IslandOverlayService.isEnabled(context)) {
-                        context.startSafely(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    }
-                }
-            }
-            item {
                 ActionRow("Dial on lock screen", "Set the Horizon Dial live wallpaper. Choose Lock screen when Android asks") {
                     // Straight to the Horizon Dial preview; if this phone doesn't support that, the live wallpaper list.
                     runCatching {
@@ -598,9 +585,25 @@ fun SettingsScreen(
                 }
             }
 
-            item { Section("Your layout") }
-            item { ActionRow("Back up layout", "Save your pages, folders, dock and settings to a file", onBackup) }
-            item { ActionRow("Restore layout", "Load a backup file", onRestore) }
+            moreSettings(vm, s, apps)
+
+            item { Section("Backup") }
+            item {
+                ActionRow(
+                    "Back up now",
+                    "Saves your pages, folders, dock, custom icons and settings. Pick Google Drive in the next screen to keep it in the cloud.",
+                    onBackup,
+                )
+            }
+            item { ActionRow("Restore from a backup", "From a file on this phone or Google Drive", onRestore) }
+            item {
+                Text(
+                    "Horizon is also part of your phone's automatic Google backup, so a new phone signed in to your account gets your setup back. Widgets need adding again after a restore.",
+                    color = LocalInk.current.copy(alpha = 0.55f),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+            }
             item {
                 ActionRow("Default home app", "Make Horizon your home screen") {
                     context.startSafely(Intent(Settings.ACTION_HOME_SETTINGS))
@@ -661,7 +664,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.20"
+    const val NAME = "0.21"
 }
 
 @Composable

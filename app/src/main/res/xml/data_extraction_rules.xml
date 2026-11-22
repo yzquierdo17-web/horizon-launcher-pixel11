@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: your layout, settings and custom icons go into your Google backup and
+     move with you to a new phone. Downloaded icons and pictures are rebuilt instead. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="horizon.xml" />
+        <include domain="sharedpref" path="island.xml" />
+        <include domain="file" path="app_icons/" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="horizon.xml" />
+        <include domain="sharedpref" path="island.xml" />
+        <include domain="file" path="app_icons/" />
+    </device-transfer>
+</data-extraction-rules>

@@ -124,6 +124,40 @@ class CalendarRepository(private val context: Context) {
         }.getOrDefault(emptyList())
     }
 
+    /** Events whose title matches, from a week ago to two months ahead (for search). */
+    fun search(query: String): List<Meeting> {
+        val q = query.trim()
+        if (q.length < 2 || !hasPermission()) return emptyList()
+        val now = System.currentTimeMillis()
+        val uri = Instances.CONTENT_URI.buildUpon().also {
+            ContentUris.appendId(it, now - 7 * 24 * HOUR)
+            ContentUris.appendId(it, now + 60 * 24 * HOUR)
+        }.build()
+        val projection = arrayOf(
+            Instances.EVENT_ID, Instances.TITLE, Instances.BEGIN, Instances.END, Instances.DISPLAY_COLOR, Instances.ALL_DAY,
+        )
+        val selection = "${Instances.TITLE} LIKE ? AND ${Instances.VISIBLE} = 1"
+        return runCatching {
+            val out = mutableListOf<Meeting>()
+            context.contentResolver.query(uri, projection, selection, arrayOf("%$q%"), "${Instances.BEGIN} ASC")?.use { c ->
+                while (c.moveToNext()) {
+                    out += Meeting(
+                        eventId = c.getLong(0),
+                        title = c.getString(1).orEmpty(),
+                        begin = c.getLong(2),
+                        end = c.getLong(3),
+                        joinUrl = null,
+                        color = if (c.isNull(4)) null else c.getInt(4),
+                        allDay = c.getInt(5) == 1,
+                    )
+                }
+            }
+            // Upcoming first, then the most recent past ones.
+            val (past, next) = out.partition { it.end < now }
+            (next + past.reversed()).distinctBy { it.eventId to it.begin }.take(4)
+        }.getOrDefault(emptyList())
+    }
+
     fun openEvent(m: Meeting) {
         val intent = Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, m.eventId))
             .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, m.begin)

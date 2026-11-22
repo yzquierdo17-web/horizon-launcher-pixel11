@@ -29,7 +29,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -73,6 +75,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+
+private const val SAVED = "\u0000saved"
 
 /** What the news feed remembers while the Today page is open. */
 class NewsUiState {
@@ -120,18 +124,23 @@ fun LazyListScope.newsSection(
         }
     }
 
+    // Topics you follow by keyword come first, then the regular sections.
     val topics = stories.map { it.topic }.distinct()
-    if (topics.size > 1) item(key = "news-chips") {
+        .sortedBy { if (it in settings.newsKeywords) 0 else 1 }
+    val saved = settings.newsSaved
+    if (topics.size > 1 || saved.isNotEmpty()) item(key = "news-chips") {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             NewsChip("For you", ui.filter == null) { ui.filter = null; ui.limit = 10 }
+            if (saved.isNotEmpty()) NewsChip("Saved · ${saved.size}", ui.filter == SAVED) { ui.filter = SAVED; ui.limit = 10 }
             topics.forEach { t -> NewsChip(t, ui.filter == t) { ui.filter = t; ui.limit = 10 } }
         }
     }
 
-    val shown = stories.filter { ui.filter == null || it.topic == ui.filter }
+    val shown = if (ui.filter == SAVED) saved.reversed()
+    else stories.filter { ui.filter == null || it.topic == ui.filter }
     if (shown.isEmpty()) {
         item(key = "news-empty") {
             if (loading) {
@@ -151,7 +160,7 @@ fun LazyListScope.newsSection(
     val limit = minOf(ui.limit, shown.size)
     shown.subList(0, limit).forEach { s ->
         item(key = "news-${s.link}") {
-            StoryCard(vm, s, settings.newsImages, s.link in settings.newsHearts)
+            StoryCard(vm, s, settings.newsImages, s.link in settings.newsHearts, saved.any { it.link == s.link })
         }
     }
     if (limit < shown.size) {
@@ -205,7 +214,7 @@ private fun NewsChip(label: String, selected: Boolean, onClick: () -> Unit) {
 
 /** A Discover card: big picture, headline, then the source with heart, share and more. */
 @Composable
-private fun StoryCard(vm: LauncherViewModel, s: NewsStory, images: Boolean, hearted: Boolean) {
+private fun StoryCard(vm: LauncherViewModel, s: NewsStory, images: Boolean, hearted: Boolean, saved: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val primary = MaterialTheme.colorScheme.primary
@@ -290,6 +299,11 @@ private fun StoryCard(vm: LauncherViewModel, s: NewsStory, images: Boolean, hear
                         modifier = Modifier.clip(CircleShape).clickable { menu = true }.padding(10.dp).size(20.dp),
                     )
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text(if (saved) "Remove from Saved" else "Save for later") },
+                            leadingIcon = { Icon(if (saved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder, null) },
+                            onClick = { menu = false; vm.toggleSaved(s) },
+                        )
                         DropdownMenuItem(
                             text = { Text("Not interested in this story") },
                             leadingIcon = { Icon(Icons.Outlined.ThumbDown, null) },

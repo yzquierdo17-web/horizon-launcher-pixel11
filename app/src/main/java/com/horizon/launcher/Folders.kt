@@ -87,7 +87,7 @@ fun FolderOverlay(
                             } else {
                                 LauncherIcon(
                                     app = app,
-                                    label = app.label,
+                                    label = if (app.showLabel) app.label else "",
                                     drag = drag,
                                     payload = DragPayload.FromFolder(folder.id, i),
                                     onTap = { onLaunch(app) },

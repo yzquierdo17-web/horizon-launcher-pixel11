@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: what goes into your Google backup. -->
+<full-backup-content>
+    <include domain="sharedpref" path="horizon.xml" />
+    <include domain="sharedpref" path="island.xml" />
+    <include domain="file" path="app_icons/" />
+</full-backup-content>
