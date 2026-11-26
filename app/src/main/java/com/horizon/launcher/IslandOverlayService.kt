@@ -74,6 +74,10 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
     }
     private val outsideTaps = MutableStateFlow(0)
 
+    // Emoji battery status bar: its own thin window across the top, under the island.
+    private var barView: FrameLayout? = null
+    private val statusBarShown = MutableStateFlow(true)
+
     override fun onCreate() {
         super.onCreate()
         IslandDiagnostics.install(this)
@@ -95,6 +99,7 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         }
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         watchPlacement()
+        watchEmojiBar()
         androidx.core.content.ContextCompat.registerReceiver(
             this, screenOff, android.content.IntentFilter().apply {
                 addAction(android.content.Intent.ACTION_SCREEN_OFF)
@@ -108,6 +113,86 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         super.onConfigurationChanged(newConfig)
         geometry.value = measure()
         applyMode(mode, force = true)
+        barView?.let { v ->
+            runCatching {
+                val lp = v.layoutParams as WindowManager.LayoutParams
+                lp.height = geometry.value?.statusBar ?: lp.height
+                wm?.updateViewLayout(v, lp)
+            }
+        }
+    }
+
+    // ---------- Emoji battery bar ----------
+
+    private fun watchEmojiBar() {
+        EmojiBatteryPrefs.load(this)
+        lifecycleScope.launch {
+            EmojiBatteryPrefs.style.collect { st ->
+                val on = BarMode.of(st.bar) != BarMode.Off
+                if (on && barView == null) addBar() else if (!on && barView != null) removeBar()
+                if (BarMode.of(st.bar) == BarMode.Full) NetHub.start(this@IslandOverlayService) else NetHub.stop(this@IslandOverlayService)
+            }
+        }
+    }
+
+    private fun addBar() {
+        val manager = wm ?: return
+        runCatching {
+            BatteryHub.start(this)
+            val frame = FrameLayout(this).apply {
+                setViewTreeLifecycleOwner(this@IslandOverlayService)
+                setViewTreeSavedStateRegistryOwner(this@IslandOverlayService)
+                setViewTreeViewModelStoreOwner(this@IslandOverlayService)
+                // Hide when an app goes full screen (videos, games) and hides the real status bar.
+                setOnApplyWindowInsetsListener { v, insets ->
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        statusBarShown.value = insets.isVisible(android.view.WindowInsets.Type.statusBars())
+                    }
+                    v.onApplyWindowInsets(insets)
+                }
+            }
+            val compose = ComposeView(this).apply {
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                setContent {
+                    val geo by geometry.collectAsState()
+                    val shown by statusBarShown.collectAsState()
+                    geo?.let { EmojiStatusBar(it, shown) }
+                }
+            }
+            frame.addView(compose, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            val p = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                geometry.value?.statusBar ?: (24 * resources.displayMetrics.density).toInt(),
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                BASE_FLAGS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= 30) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+                if (Build.VERSION.SDK_INT >= 30) fitInsetsTypes = 0
+                title = "Horizon emoji battery"
+            }
+            manager.addView(frame, p)
+            barView = frame
+            // Put the island back on top of the new bar.
+            val island = root
+            val ip = params
+            if (island != null && ip != null) {
+                runCatching { manager.removeView(island) }
+                runCatching { manager.addView(island, ip) }
+            }
+        }.onFailure { IslandDiagnostics.record(this, it) }
+    }
+
+    private fun removeBar() {
+        barView?.let { v -> runCatching { wm?.removeView(v) } }
+        if (barView != null) BatteryHub.stop(this)
+        barView = null
+        NetHub.stop(this)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
@@ -119,6 +204,7 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         IslandHub._overlay.value = false
         root?.let { v -> runCatching { wm?.removeView(v) } }
         root = null
+        removeBar()
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         viewModelStore.clear()
         super.onDestroy()

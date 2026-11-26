@@ -41,6 +41,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -58,6 +59,27 @@ import androidx.compose.ui.unit.sp
 
 /** Settings for gestures, the drawer and search, Today cards, Discover topics and flight alerts. */
 fun LazyListScope.moreSettings(vm: LauncherViewModel, s: LauncherSettings, apps: List<AppEntry>) {
+    item { Header("Emoji battery") }
+    item {
+        val style by EmojiBatteryPrefs.style.collectAsState()
+        val battery by BatteryHub.state.collectAsState()
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                .clickable { vm.openSettings(false); vm.showOverlay(LauncherViewModel.Overlay.EmojiBattery) }
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Emoji battery", color = LocalInk.current, fontSize = 16.sp)
+                Text(
+                    "Status bar: " + BarMode.of(style.bar).label + " · " + BatteryTheme.of(style.theme).label,
+                    color = LocalInk.current.copy(alpha = 0.6f), fontSize = 13.sp,
+                )
+            }
+            EmojiBatteryGlyph(style, battery, LocalInk.current, height = 16.dp)
+        }
+    }
+
     item { Header("Gestures") }
     HomeGesture.entries.forEach { g ->
         item(key = "gesture-${g.name}") { GestureRow(vm, g, g.current(s), apps) }

@@ -101,6 +101,10 @@ object IslandHub {
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
 
     /** Unread notifications per app ("package#userId"), for the dots on app icons. */
+    internal val _statusIcons = MutableStateFlow<List<Pair<String, android.graphics.drawable.Icon>>>(emptyList())
+    /** Notification icons, newest first (for the custom status bar). */
+    val statusIcons: StateFlow<List<Pair<String, android.graphics.drawable.Icon>>> = _statusIcons.asStateFlow()
+
     internal val _badges = MutableStateFlow<Map<String, Int>>(emptyMap())
     val badges: StateFlow<Map<String, Int>> = _badges.asStateFlow()
 
@@ -167,7 +171,15 @@ class IslandListener : NotificationListenerService() {
             val ranking = Ranking()
             val rankings = currentRanking
             val counts = HashMap<String, Int>()
-            activeNotifications?.forEach { sbn ->
+            val all = activeNotifications.orEmpty()
+            // Small icons for Horizon's own status bar (emoji battery style), newest first, one per app.
+            IslandHub._statusIcons.value = all
+                .filter { (it.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY) == 0 && it.packageName != packageName }
+                .sortedByDescending { it.postTime }
+                .distinctBy { it.packageName }
+                .mapNotNull { sbn -> sbn.notification.smallIcon?.let { sbn.packageName to it } }
+                .take(5)
+            all.forEach { sbn ->
                 if (sbn.isOngoing || !sbn.isClearable) return@forEach
                 if ((sbn.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY) != 0) return@forEach
                 if (rankings != null && rankings.getRanking(sbn.key, ranking) && !ranking.canShowBadge()) return@forEach
@@ -181,6 +193,7 @@ class IslandListener : NotificationListenerService() {
     override fun onListenerDisconnected() {
         IslandHub._connected.value = false
         IslandHub._badges.value = emptyMap()
+        IslandHub._statusIcons.value = emptyList()
         runCatching { sessions?.removeOnActiveSessionsChangedListener(sessionsChanged) }
         watched.forEach { (c, cb) -> runCatching { c.unregisterCallback(cb) } }
         watched.clear()

@@ -174,9 +174,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             workTime.collect { applyWorkHours(it) }
         }
+        // Keeps the emoji battery widget and previews current.
+        EmojiBatteryPrefs.load(app)
+        BatteryHub.start(app)
     }
 
     override fun onCleared() {
+        BatteryHub.stop(getApplication())
         runCatching { getApplication<Application>().unregisterReceiver(profileReceiver) }
     }
 
@@ -977,6 +981,17 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         updateSettings { it.copy(appNames = it.appNames - key, appIcons = it.appIcons - key, noLabel = it.noLabel - key) }
     }
 
+    // ---------- Emoji battery ----------
+
+    private val _emojiWidgetSignal = MutableStateFlow(0)
+    /** Goes up when you ask to put the emoji battery widget on your home screen. */
+    val emojiWidgetSignal: StateFlow<Int> = _emojiWidgetSignal.asStateFlow()
+    fun addEmojiBatteryWidget() {
+        showOverlay(null)
+        openSettings(false)
+        _emojiWidgetSignal.value++
+    }
+
     private val _todaySignal = MutableStateFlow(0)
     /** Goes up by one each time something asks for the Today page. */
     val todaySignal: StateFlow<Int> = _todaySignal.asStateFlow()
@@ -1008,7 +1023,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Full-screen helpers opened from the add wheel (or Settings, for Icon style). */
-    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites, ClockFaces, Radar, Customize }
+    enum class Overlay { Wheel, AddApp, IconStyle, HiddenApps, FocusApps, Favorites, ClockFaces, Radar, Customize, EmojiBattery }
 
     /** Choose the clock face (keeps the older Compact / Dial switches in step). */
     fun setClockFace(face: ClockFace) = updateSettings {

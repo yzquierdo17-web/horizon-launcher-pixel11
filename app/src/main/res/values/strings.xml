@@ -4,5 +4,6 @@
     <string name="dial_wallpaper_name">Horizon Dial</string>
     <string name="dial_wallpaper_desc">Rotating dial clock with smooth seconds, for your lock screen</string>
     <string name="island_name">Horizon Dynamic Island</string>
-    <string name="island_description">Shows Horizon\'s Dynamic Island around the camera, over every app and on the lock screen. It only draws the island; it doesn\'t read or control anything on your screen.</string>
+    <string name="island_description">Shows Horizon\'s Dynamic Island around the camera and the emoji battery at the top of the screen, over every app and on the lock screen. It also runs the gestures you choose (lock screen, notifications, recent apps, screenshots). It doesn\'t read anything on your screen.</string>
+    <string name="emoji_battery_widget_description">Your battery as an emoji that changes as it drains and charges</string>
 </resources>

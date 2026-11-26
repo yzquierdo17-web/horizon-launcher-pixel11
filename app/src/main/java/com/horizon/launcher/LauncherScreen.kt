@@ -300,6 +300,16 @@ private fun LauncherContent(
     val todayScope = rememberCoroutineScope()
     val today = remember { TodayController(todayScope) }
     val todaySignal by vm.todaySignal.collectAsState()
+    val emojiWidget by vm.emojiWidgetSignal.collectAsState()
+    val widgetContext = LocalContext.current
+    LaunchedEffect(emojiWidget) {
+        if (emojiWidget > 0) {
+            val mine = android.content.ComponentName(widgetContext, EmojiBatteryWidget::class.java)
+            android.appwidget.AppWidgetManager.getInstance(widgetContext).installedProviders
+                .firstOrNull { it.provider == mine }
+                ?.let { onAddWidget(it) }
+        }
+    }
     LaunchedEffect(todaySignal) { if (todaySignal > 0) today.open() }
     LaunchedEffect(drawerOpen) { if (drawerOpen) today.close() }
 
@@ -505,6 +515,9 @@ private fun LauncherContent(
             }
             LauncherViewModel.Overlay.Customize -> OnSurface {
                 AppCustomizeScreen(vm) { vm.showOverlay(null) }
+            }
+            LauncherViewModel.Overlay.EmojiBattery -> OnSurface {
+                EmojiBatteryScreen(vm) { vm.showOverlay(null) }
             }
             LauncherViewModel.Overlay.Favorites -> OnSurface {
                 AppChecklistScreen(

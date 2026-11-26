@@ -59,6 +59,7 @@ After that, every new APK installs over the last one. Without them, builds fall 
 - **Followed topics & Saved:** follow any keyword in Discover; save stories for later.
 - **Flight alerts:** a notification when a plane flies low over you, and follow any flight number until it lands.
 - **Backup:** to a file or Google Drive (custom icons included), plus your phone's automatic Google backup.
+- **Emoji battery:** your battery as an emoji that changes as it drains and charges (Faces, Hearts, Cats, Animals, Moon, Weather, Plants, Food, Space, Fire, or any emoji you pick). Show it next to the camera, as a full custom status bar (time, notification icons, Wi-Fi, signal, battery, in your colour), or as a home-screen widget. Settings → Emoji battery.
 - **Widget stacks:** long-press a widget and choose **Add widget to stack**, then pick another widget. Swipe up and down on the stack to switch between them; dots on the side show where you are. Long-press to remove the one showing, or the whole stack.
 - **Updates inside Horizon:** Horizon checks your GitHub releases every few hours. When a newer build exists, a chip appears under the clock ("Horizon update ready · Install"), and Settings → Updates shows what's new. One tap downloads it and Android asks you to confirm; your layout is kept. The first time, Android asks you to allow Horizon to install apps.
 
