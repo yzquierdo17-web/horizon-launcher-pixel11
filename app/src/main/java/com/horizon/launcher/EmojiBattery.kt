@@ -109,7 +109,8 @@ enum class BarMode(val id: String, val label: String) {
 data class EmojiBatteryStyle(
     val theme: String = BatteryTheme.Faces.id,
     val layout: String = BatteryLayout.Beside.id,
-    val bar: String = BarMode.Off.id,
+    /** On by default: a full emoji status bar, the Classic look. */
+    val bar: String = BarMode.Full.id,
     val showPercent: Boolean = true,
     /** The single emoji for the "Your emoji" theme. */
     val custom: String = "",
@@ -162,7 +163,7 @@ data class EmojiBatteryStyle(
     val chargeAnim: String = "pulse",
 ) {
     fun toJson(): JSONObject = JSONObject()
-        .put("theme", theme).put("layout", layout).put("bar", bar).put("pct", showPercent)
+        .put("theme", theme).put("layout", layout).put("bar", bar).put("barChosen", true).put("pct", showPercent)
         .put("custom", custom).put("fill", fill).put("bg", background).put("scale", scale.toDouble()).put("anim", animate)
         .put("bgMode", bgMode).put("bg2", background2).put("iconColor", iconColor).put("timeColor", timeColor)
         .put("showTime", showTime).put("timeBold", timeBold).put("showNotifs", showNotifs).put("showWifi", showWifi)
@@ -229,6 +230,33 @@ enum class BarPreset(val label: String, val apply: (EmojiBatteryStyle) -> EmojiB
     Sticker("Just the emoji", { it.copy(bar = BarMode.Sticker.id, theme = BatteryTheme.Faces.id, layout = BatteryLayout.Beside.id) }),
 }
 
+/**
+ * Turning the helper on by itself. Android only allows this after a one-time grant from a
+ * computer (adb shell pm grant com.horizon.launcher android.permission.WRITE_SECURE_SETTINGS).
+ */
+object AutoHelper {
+    const val ADB = "adb shell pm grant com.horizon.launcher android.permission.WRITE_SECURE_SETTINGS"
+
+    fun canSwitchItself(context: Context): Boolean =
+        context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** Switches the helper on if Horizon is allowed to. True when it's on afterwards. */
+    fun ensureOn(context: Context): Boolean {
+        if (IslandOverlayService.isEnabled(context)) return true
+        if (!canSwitchItself(context)) return false
+        return runCatching {
+            val cr = context.contentResolver
+            val me = android.content.ComponentName(context, IslandOverlayService::class.java).flattenToString()
+            val key = android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            val list = android.provider.Settings.Secure.getString(cr, key).orEmpty()
+                .split(':').filter { it.isNotBlank() && !it.equals(me, true) }
+            android.provider.Settings.Secure.putString(cr, key, (list + me).joinToString(":"))
+            android.provider.Settings.Secure.putInt(cr, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+            true
+        }.getOrDefault(false)
+    }
+}
+
 /** The emoji battery's settings, shared by the launcher, the status bar overlay and the widget. */
 object EmojiBatteryPrefs {
     private const val FILE = "emoji_battery"
@@ -240,7 +268,13 @@ object EmojiBatteryPrefs {
         if (loaded) return
         loaded = true
         val raw = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString("style", null)
-        if (raw != null) runCatching { _style.value = EmojiBatteryStyle.fromJson(JSONObject(raw)) }
+        if (raw != null) runCatching {
+            val o = JSONObject(raw)
+            var st = EmojiBatteryStyle.fromJson(o)
+            // Saved before it was on by default: switch it on, once. Turning it off later sticks.
+            if (!o.has("barChosen") && BarMode.of(st.bar) == BarMode.Off) st = st.copy(bar = BarMode.Full.id)
+            _style.value = st
+        }
     }
 
     fun update(context: Context, change: (EmojiBatteryStyle) -> EmojiBatteryStyle) {

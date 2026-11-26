@@ -82,6 +82,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.onResume() // refreshes apps, applies work hours, refreshes the meeting line
+        // Emoji battery: switch the helper on by ourselves when Android lets us.
+        EmojiBatteryPrefs.load(this)
+        if (BarMode.of(EmojiBatteryPrefs.style.value.bar) != BarMode.Off) AutoHelper.ensureOn(this)
+        vm.maybeAskForHelper()
         // Wake the Dynamic Island's listener if access is on but Android hasn't connected it yet
         if (IslandHub.hasAccess(this) && !IslandHub.connected.value) {
             runCatching {

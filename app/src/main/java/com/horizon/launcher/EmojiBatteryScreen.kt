@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -382,7 +383,7 @@ fun EmojiBatteryScreen(vm: LauncherViewModel, onClose: () -> Unit) {
 
 /** The one-time switch, made as short as Android allows. */
 @Composable
-private fun HelperSetup(helperOn: Boolean, onClose: () -> Unit) {
+fun HelperSetup(helperOn: Boolean, onClose: () -> Unit) {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
     androidx.compose.runtime.LaunchedEffect(helperOn) {
@@ -395,7 +396,10 @@ private fun HelperSetup(helperOn: Boolean, onClose: () -> Unit) {
         title = { Text(if (helperOn) "You're all set 🎉" else "One quick switch") },
         text = {
             if (helperOn) Text("Your emoji battery is now at the top of your screen.")
-            else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            else Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text("Android needs you to allow this once. It's the same switch the Dynamic Island uses, and Horizon doesn't read your screen.")
                 Text(
                     "Turn it on",
@@ -418,6 +422,26 @@ private fun HelperSetup(helperOn: Boolean, onClose: () -> Unit) {
                     "Open Horizon's app page",
                     color = primary, fontSize = 14.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier.clip(CircleShape).clickable { IslandOverlayService.openAppPage(context) }.padding(vertical = 6.dp),
+                )
+                androidx.compose.material3.HorizontalDivider()
+                Text("Never do this again (optional)", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(
+                    "With a computer, run this once with your phone plugged in (USB debugging on). After that Horizon switches its helper on by itself, now and whenever Android turns it off:",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp,
+                )
+                Text(
+                    AutoHelper.ADB,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 12.sp,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant).padding(10.dp),
+                )
+                Text(
+                    "Copy command",
+                    color = primary, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clip(CircleShape).clickable {
+                        context.getSystemService(android.content.ClipboardManager::class.java)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText("adb", AutoHelper.ADB))
+                    }.padding(vertical = 6.dp),
                 )
             }
         },

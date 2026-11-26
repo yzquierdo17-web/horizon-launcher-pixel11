@@ -983,6 +983,25 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Emoji battery ----------
 
+    private val _helperPrompt = MutableStateFlow(false)
+    /** True while the home screen offers to switch on the emoji battery's helper. */
+    val helperPrompt: StateFlow<Boolean> = _helperPrompt.asStateFlow()
+
+    /** Offers the switch on the home screen: right away the first time, then at most every 3 days. */
+    fun maybeAskForHelper() {
+        val ctx = getApplication<Application>()
+        if (BarMode.of(EmojiBatteryPrefs.style.value.bar) == BarMode.Off || IslandOverlayService.isEnabled(ctx)) {
+            _helperPrompt.value = false
+            return
+        }
+        val last = prefs.getLong("helper_prompt_at", 0L)
+        if (System.currentTimeMillis() - last < 3 * 24 * 3600_000L) return
+        prefs.edit().putLong("helper_prompt_at", System.currentTimeMillis()).apply()
+        _helperPrompt.value = true
+    }
+
+    fun closeHelperPrompt() { _helperPrompt.value = false }
+
     private val _emojiWidgetSignal = MutableStateFlow(0)
     /** Goes up when you ask to put the emoji battery widget on your home screen. */
     val emojiWidgetSignal: StateFlow<Int> = _emojiWidgetSignal.asStateFlow()

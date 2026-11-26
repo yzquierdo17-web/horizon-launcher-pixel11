@@ -664,7 +664,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.23.1"
+    const val NAME = "0.24"
 }
 
 @Composable

@@ -536,6 +536,19 @@ private fun LauncherContent(
             }
             null -> Unit
         }
+        // Emoji battery is on by default; ask for its one switch right here on the home screen.
+        val askHelper by vm.helperPrompt.collectAsState()
+        if (askHelper && overlay == null) {
+            val ctx = LocalContext.current
+            var helperOn by remember { mutableStateOf(IslandOverlayService.isEnabled(ctx)) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    helperOn = IslandOverlayService.isEnabled(ctx)
+                    delay(800)
+                }
+            }
+            OnSurface { HelperSetup(helperOn, onClose = { vm.closeHelperPrompt() }) }
+        }
 
         // "Remove" target at the top while dragging something off the home screen or dock
         if (drag.active && drag.payload !is DragPayload.FromDrawer) {
