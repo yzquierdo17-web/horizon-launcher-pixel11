@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.twotone.Apps
+import androidx.compose.material.icons.twotone.BatteryChargingFull
 import androidx.compose.material.icons.twotone.DoNotDisturbOn
 import androidx.compose.material.icons.twotone.Star
 import androidx.compose.material.icons.twotone.Palette
@@ -99,6 +100,7 @@ private val WheelOptions = listOf(
     WheelOption("Wallpaper", "Change wallpaper", Icons.TwoTone.Wallpaper),
     WheelOption("Focus", "Focus mode", Icons.TwoTone.DoNotDisturbOn),
     WheelOption("Favourites", "Minimal mode favourites", Icons.TwoTone.Star),
+    WheelOption("Battery", "Emoji battery", Icons.TwoTone.BatteryChargingFull),
     WheelOption("Settings", "Horizon settings", Icons.TwoTone.Settings),
 )
 
@@ -146,7 +148,8 @@ fun AddWheel(vm: LauncherViewModel, onDismiss: () -> Unit) {
                 if (on && vm.settings.value.focusApps.isEmpty()) vm.showOverlay(LauncherViewModel.Overlay.FocusApps)
             }
             5 -> vm.showOverlay(LauncherViewModel.Overlay.Favorites)
-            6 -> vm.openSettings(true)
+            6 -> vm.showOverlay(LauncherViewModel.Overlay.EmojiBattery)
+            7 -> vm.openSettings(true)
         }
     }
 

@@ -441,6 +441,31 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
 
+        /** Opens Horizon's own switch in Accessibility settings (or the list, on phones that can't). */
+        fun openSwitch(context: Context) {
+            val comp = android.content.ComponentName(context, IslandOverlayService::class.java).flattenToString()
+            val direct = android.content.Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                .putExtra(android.content.Intent.EXTRA_COMPONENT_NAME, comp)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { context.startActivity(direct) }.isSuccess) return
+            val list = android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                // Pixel settings scroll to and highlight the item with these.
+                .putExtra(":settings:fragment_args_key", comp)
+                .putExtra(":settings:show_fragment_args", android.os.Bundle().apply { putString(":settings:fragment_args_key", comp) })
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(list) }
+        }
+
+        /** Horizon's app page, where "Allow restricted settings" lives (⋮ menu). */
+        fun openAppPage(context: Context) {
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + context.packageName))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+
         fun isEnabled(context: Context): Boolean {
             val enabled = android.provider.Settings.Secure.getString(
                 context.contentResolver,

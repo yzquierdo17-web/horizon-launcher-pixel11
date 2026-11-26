@@ -70,8 +70,22 @@ fun EmojiBatteryScreen(vm: LauncherViewModel, onClose: () -> Unit) {
     var tryCharging by remember { mutableStateOf(false) }
     val preview = if (tryLevel < 0 && !tryCharging) real
     else BatteryState(level = if (tryLevel < 0) real.level else tryLevel.roundToInt(), charging = tryCharging)
-    fun set(change: (EmojiBatteryStyle) -> EmojiBatteryStyle) = EmojiBatteryPrefs.update(context, change)
-    val helperOn = IslandOverlayService.isEnabled(context)
+    // Watches for the helper being switched on while you're in Settings, then says so.
+    var helperOn by remember { mutableStateOf(IslandOverlayService.isEnabled(context)) }
+    var setup by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            val now = IslandOverlayService.isEnabled(context)
+            if (now && !helperOn) vm.toast("Emoji battery is on 🎉")
+            helperOn = now
+            kotlinx.coroutines.delay(800)
+        }
+    }
+    fun set(change: (EmojiBatteryStyle) -> EmojiBatteryStyle) {
+        EmojiBatteryPrefs.update(context, change)
+        val st = EmojiBatteryPrefs.style.value
+        if (!helperOn && (BarMode.of(st.bar) != BarMode.Off)) setup = true
+    }
     val primary = MaterialTheme.colorScheme.primary
 
     Box(Modifier.fillMaxSize().swallowTouches().background(LocalThemeSurface.current.copy(alpha = 0.98f))) {
@@ -87,6 +101,24 @@ fun EmojiBatteryScreen(vm: LauncherViewModel, onClose: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                     Text("Emoji battery", color = LocalInk.current, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            // Where things stand, in one line, with the fix one tap away.
+            item {
+                val on = BarMode.of(style.bar) != BarMode.Off
+                val (title, sub, color) = when {
+                    !on -> Triple("Pick a look below to start", "One tap applies it", LocalInk.current.copy(alpha = 0.06f))
+                    helperOn -> Triple("✓ On, showing at the top of your screen", "Change anything below; it updates live", Color(0xFF4CD964).copy(alpha = 0.18f))
+                    else -> Triple("One step left: turn on the switch", "Tap here, then turn on Horizon Dynamic Island", Color(0xFFFFB300).copy(alpha = 0.22f))
+                }
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(color)
+                        .clickable(enabled = on && !helperOn) { setup = true }
+                        .padding(14.dp),
+                ) {
+                    Text(title, color = LocalInk.current, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(sub, color = LocalInk.current.copy(alpha = 0.7f), fontSize = 13.sp)
                 }
             }
 
@@ -144,7 +176,7 @@ fun EmojiBatteryScreen(vm: LauncherViewModel, onClose: () -> Unit) {
                         val look = p.apply(style)
                         Column(
                             Modifier.width(150.dp).clip(RoundedCornerShape(18.dp)).background(LocalInk.current.copy(alpha = 0.06f))
-                                .clickable { set { p.apply(it) } }.padding(10.dp),
+                                .clickable { set { p.apply(it) }; if (helperOn) vm.toast("${p.label} applied") }.padding(10.dp),
                         ) {
                             MiniBar(look, preview)
                             Spacer(Modifier.height(8.dp))
@@ -157,16 +189,6 @@ fun EmojiBatteryScreen(vm: LauncherViewModel, onClose: () -> Unit) {
             item { Label("At the top of the screen") }
             item {
                 Chips(BarMode.entries.map { it.id to it.label }, style.bar) { id -> set { it.copy(bar = id) } }
-            }
-            if (BarMode.of(style.bar) != BarMode.Off && !helperOn) item {
-                Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(primary.copy(alpha = 0.12f))
-                        .clickable { context.startSafely(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                        .padding(14.dp),
-                ) {
-                    Text("Turn on Horizon in Accessibility", color = LocalInk.current, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                    Text("It's the same helper as the Dynamic Island. Tap to open the setting.", color = LocalInk.current.copy(alpha = 0.7f), fontSize = 13.sp)
-                }
             }
             if (BarMode.of(style.bar) == BarMode.Full) {
                 item {
@@ -354,7 +376,52 @@ fun EmojiBatteryScreen(vm: LauncherViewModel, onClose: () -> Unit) {
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
+        if (setup) HelperSetup(helperOn, onClose = { setup = false })
     }
+}
+
+/** The one-time switch, made as short as Android allows. */
+@Composable
+private fun HelperSetup(helperOn: Boolean, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val primary = MaterialTheme.colorScheme.primary
+    androidx.compose.runtime.LaunchedEffect(helperOn) {
+        if (helperOn) { kotlinx.coroutines.delay(1400); onClose() }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onClose,
+        confirmButton = {},
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onClose) { Text(if (helperOn) "Done" else "Later") } },
+        title = { Text(if (helperOn) "You're all set 🎉" else "One quick switch") },
+        text = {
+            if (helperOn) Text("Your emoji battery is now at the top of your screen.")
+            else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Android needs you to allow this once. It's the same switch the Dynamic Island uses, and Horizon doesn't read your screen.")
+                Text(
+                    "Turn it on",
+                    color = MaterialTheme.colorScheme.onPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().clip(CircleShape).background(primary)
+                        .clickable { IslandOverlayService.openSwitch(context) }.padding(vertical = 14.dp),
+                )
+                Text(
+                    "On the next screen, turn on Horizon Dynamic Island and tap Allow, then come back. This closes by itself when it's done.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp,
+                )
+                androidx.compose.material3.HorizontalDivider()
+                Text("Switch greyed out?", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(
+                    "Android blocks it for apps installed from a file. Open Horizon's app page, tap ⋮ at the top right, choose Allow restricted settings, then tap Turn it on again.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp,
+                )
+                Text(
+                    "Open Horizon's app page",
+                    color = primary, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clip(CircleShape).clickable { IslandOverlayService.openAppPage(context) }.padding(vertical = 6.dp),
+                )
+            }
+        },
+    )
 }
 
 @Composable

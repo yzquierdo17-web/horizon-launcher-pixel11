@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Movie
@@ -1445,6 +1446,16 @@ private fun AppDrawer(
                 if (answer != null) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "answer") {
                         AnswerCard(query = query, answer = answer)
+                    }
+                }
+                if (query.trim().length >= 3 && listOf("emoji", "battery", "status bar", "notch").any {
+                        it.startsWith(query.trim().lowercase()) || query.trim().lowercase().startsWith(it)
+                    }) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "emoji-battery") {
+                        ResultRow(Icons.Outlined.BatteryChargingFull, "Emoji battery", "Fun battery and status bar") {
+                            close()
+                            vm.showOverlay(LauncherViewModel.Overlay.EmojiBattery)
+                        }
                     }
                 }
                 if (query.trim().length >= 3 && listOf("radar", "flight", "plane", "aircraft", "airplane").any {
