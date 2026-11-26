@@ -86,13 +86,26 @@ object IslandDiagnostics {
         val trace = android.util.Log.getStackTraceString(e).take(2500)
         val stamp = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date())
         context.getSharedPreferences("island", Context.MODE_PRIVATE).edit()
-            .putString("lastError", "$stamp\n$trace")
+            .putString("lastError", "$stamp · build ${build(context)}\n$trace")
+            .putLong("lastErrorBuild", build(context))
             .commit()
     }
 
-    fun lastError(context: Context): String? =
-        context.getSharedPreferences("island", Context.MODE_PRIVATE).getString("lastError", null)
+    /** The last problem, but only if it happened in this version (older ones are already fixed). */
+    fun lastError(context: Context): String? {
+        val prefs = context.getSharedPreferences("island", Context.MODE_PRIVATE)
+        val err = prefs.getString("lastError", null) ?: return null
+        if (prefs.getLong("lastErrorBuild", -1L) != build(context)) {
+            clear(context)
+            return null
+        }
+        return err
+    }
+
+    private fun build(context: Context): Long = runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+    }.getOrDefault(0L)
 
     fun clear(context: Context) =
-        context.getSharedPreferences("island", Context.MODE_PRIVATE).edit().remove("lastError").apply()
+        context.getSharedPreferences("island", Context.MODE_PRIVATE).edit().remove("lastError").remove("lastErrorBuild").apply()
 }

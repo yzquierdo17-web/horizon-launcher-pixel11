@@ -333,7 +333,10 @@ fun SettingsScreen(
                             ActionRow("Island problem found", "Tap to copy the details and send them to Claude · " + err.lineSequence().take(2).joinToString(" ")) {
                                 val cm = context.getSystemService(android.content.ClipboardManager::class.java)
                                 cm.setPrimaryClip(android.content.ClipData.newPlainText("Horizon island error", err))
-                                android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+                                // Copied once is enough; clear it so an old report isn't sent twice.
+                                IslandDiagnostics.clear(context)
+                                lastError = null
+                                android.widget.Toast.makeText(context, "Copied and cleared", android.widget.Toast.LENGTH_SHORT).show()
                             }
                         }
                         ActionRow(
@@ -664,7 +667,7 @@ fun SettingsScreen(
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.24"
+    const val NAME = "0.24.1"
 }
 
 @Composable
