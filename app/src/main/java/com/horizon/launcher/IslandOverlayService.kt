@@ -101,6 +101,10 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         watchPlacement()
         watchEmojiBar()
         androidx.core.content.ContextCompat.registerReceiver(
+            this, plugged, android.content.IntentFilter(android.content.Intent.ACTION_POWER_CONNECTED),
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED,
+        )
+        androidx.core.content.ContextCompat.registerReceiver(
             this, screenOff, android.content.IntentFilter().apply {
                 addAction(android.content.Intent.ACTION_SCREEN_OFF)
                 addAction(android.content.Intent.ACTION_SCREEN_ON)
@@ -130,6 +134,14 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
             EmojiBatteryPrefs.style.collect { st ->
                 val on = BarMode.of(st.bar) != BarMode.Off
                 if (on && barView == null) addBar() else if (!on && barView != null) removeBar()
+                // Touches only reach the bar when you set gestures on it.
+                barView?.let { v ->
+                    runCatching {
+                        val lp = v.layoutParams as WindowManager.LayoutParams
+                        val want = if (st.barGestures) BASE_FLAGS else BASE_FLAGS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        if (lp.flags != want) { lp.flags = want; wm?.updateViewLayout(v, lp) }
+                    }
+                }
                 if (BarMode.of(st.bar) == BarMode.Full) NetHub.start(this@IslandOverlayService) else NetHub.stop(this@IslandOverlayService)
             }
         }
@@ -164,7 +176,7 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
                 WindowManager.LayoutParams.MATCH_PARENT,
                 geometry.value?.statusBar ?: (24 * resources.displayMetrics.density).toInt(),
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                BASE_FLAGS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                if (EmojiBatteryPrefs.style.value.barGestures) BASE_FLAGS else BASE_FLAGS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
                 PixelFormat.TRANSLUCENT,
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
@@ -188,6 +200,66 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
         }.onFailure { IslandDiagnostics.record(this, it) }
     }
 
+    // ---------- Charging animation ----------
+
+    private var chargeView: FrameLayout? = null
+    private val plugged = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context, i: android.content.Intent) {
+            EmojiBatteryPrefs.load(c)
+            val st = EmojiBatteryPrefs.style.value
+            val power = getSystemService(android.os.PowerManager::class.java)
+            if (st.chargeAnim == "off" || power?.isInteractive == false) return
+            showChargeAnimation()
+        }
+    }
+
+    private fun showChargeAnimation() {
+        val manager = wm ?: return
+        if (chargeView != null) return
+        runCatching {
+            BatteryHub.start(this)
+            val frame = FrameLayout(this).apply {
+                setViewTreeLifecycleOwner(this@IslandOverlayService)
+                setViewTreeSavedStateRegistryOwner(this@IslandOverlayService)
+                setViewTreeViewModelStoreOwner(this@IslandOverlayService)
+            }
+            val compose = ComposeView(this).apply {
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                setContent {
+                    val st by EmojiBatteryPrefs.style.collectAsState()
+                    val b by BatteryHub.state.collectAsState()
+                    ChargingAnimation(st, b.copy(charging = true)) { hideChargeAnimation() }
+                }
+            }
+            frame.addView(compose, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            val p = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                BASE_FLAGS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= 30) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+                if (Build.VERSION.SDK_INT >= 30) fitInsetsTypes = 0
+                title = "Horizon charging"
+            }
+            manager.addView(frame, p)
+            chargeView = frame
+        }.onFailure { IslandDiagnostics.record(this, it) }
+    }
+
+    private fun hideChargeAnimation() {
+        chargeView?.let { v ->
+            runCatching { wm?.removeView(v) }
+            BatteryHub.stop(this)
+        }
+        chargeView = null
+    }
+
     private fun removeBar() {
         barView?.let { v -> runCatching { wm?.removeView(v) } }
         if (barView != null) BatteryHub.stop(this)
@@ -201,6 +273,8 @@ class IslandOverlayService : AccessibilityService(), LifecycleOwner, SavedStateR
     override fun onDestroy() {
         if (instance === this) instance = null
         runCatching { unregisterReceiver(screenOff) }
+        runCatching { unregisterReceiver(plugged) }
+        hideChargeAnimation()
         IslandHub._overlay.value = false
         root?.let { v -> runCatching { wm?.removeView(v) } }
         root = null

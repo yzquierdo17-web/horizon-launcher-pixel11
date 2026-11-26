@@ -121,24 +121,112 @@ data class EmojiBatteryStyle(
     val scale: Float = 1f,
     /** Bounce while charging. */
     val animate: Boolean = true,
+    // ----- Full status bar -----
+    /** "solid" or "gradient" (background → background2, left to right). */
+    val bgMode: String = "solid",
+    val background2: Long = 0xFF4A148C,
+    /** Icon and time colour: 0 = automatic (black or white for the background). */
+    val iconColor: Long = 0,
+    val timeColor: Long = 0,
+    val showTime: Boolean = true,
+    val timeBold: Boolean = false,
+    val showNotifs: Boolean = true,
+    val showWifi: Boolean = true,
+    val showCell: Boolean = true,
+    /** 4G / 5G label (needs the phone permission). */
+    val showNetType: Boolean = false,
+    val showAirplane: Boolean = true,
+    /** "arcs", "dots" or "bars" */
+    val wifiStyle: String = "arcs",
+    /** "triangle", "bars" or "dots" */
+    val cellStyle: String = "bars",
+    /** Icon size, 0.8 – 1.3 */
+    val iconScale: Float = 1f,
+    /** Time size, 0.8 – 1.3 */
+    val timeScale: Float = 1f,
+    // ----- Camera / notch -----
+    /** "none", "ring", "pill", "notch" */
+    val notch: String = "none",
+    /** 0.8 – 1.6 */
+    val notchSize: Float = 1f,
+    val notchColor: Long = 0xFF000000,
+    // ----- Status bar gestures (GestureAction ids, "back", "home", "power" or "app:<key>") -----
+    val barGestures: Boolean = false,
+    val barTap: String = "none",
+    val barLongPress: String = "quicksettings",
+    val barSwipeDown: String = "notifications",
+    val barSwipeLeft: String = "back",
+    val barSwipeRight: String = "recents",
+    // ----- Charging animation -----
+    /** "off", "pulse", "bubbles", "ring" */
+    val chargeAnim: String = "pulse",
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("theme", theme).put("layout", layout).put("bar", bar).put("pct", showPercent)
         .put("custom", custom).put("fill", fill).put("bg", background).put("scale", scale.toDouble()).put("anim", animate)
+        .put("bgMode", bgMode).put("bg2", background2).put("iconColor", iconColor).put("timeColor", timeColor)
+        .put("showTime", showTime).put("timeBold", timeBold).put("showNotifs", showNotifs).put("showWifi", showWifi)
+        .put("showCell", showCell).put("showNetType", showNetType).put("showAirplane", showAirplane)
+        .put("wifiStyle", wifiStyle).put("cellStyle", cellStyle).put("iconScale", iconScale.toDouble()).put("timeScale", timeScale.toDouble())
+        .put("notch", notch).put("notchSize", notchSize.toDouble()).put("notchColor", notchColor)
+        .put("barGestures", barGestures).put("barTap", barTap).put("barLong", barLongPress).put("barDown", barSwipeDown)
+        .put("barLeft", barSwipeLeft).put("barRight", barSwipeRight).put("chargeAnim", chargeAnim)
 
     companion object {
-        fun fromJson(o: JSONObject) = EmojiBatteryStyle(
-            theme = o.optString("theme", BatteryTheme.Faces.id),
-            layout = o.optString("layout", BatteryLayout.Beside.id),
-            bar = o.optString("bar", BarMode.Off.id),
-            showPercent = o.optBoolean("pct", true),
-            custom = o.optString("custom", ""),
-            fill = o.optString("fill", "level"),
-            background = o.optLong("bg", 0xFF000000),
-            scale = o.optDouble("scale", 1.0).toFloat().coerceIn(0.8f, 1.4f),
-            animate = o.optBoolean("anim", true),
-        )
+        fun fromJson(o: JSONObject): EmojiBatteryStyle {
+            val d = EmojiBatteryStyle()
+            fun f(k: String, def: Float, lo: Float, hi: Float) = o.optDouble(k, def.toDouble()).toFloat().coerceIn(lo, hi)
+            return EmojiBatteryStyle(
+                theme = o.optString("theme", d.theme),
+                layout = o.optString("layout", d.layout),
+                bar = o.optString("bar", d.bar),
+                showPercent = o.optBoolean("pct", d.showPercent),
+                custom = o.optString("custom", d.custom),
+                fill = o.optString("fill", d.fill),
+                background = o.optLong("bg", d.background),
+                scale = f("scale", 1f, 0.8f, 1.4f),
+                animate = o.optBoolean("anim", d.animate),
+                bgMode = o.optString("bgMode", d.bgMode),
+                background2 = o.optLong("bg2", d.background2),
+                iconColor = o.optLong("iconColor", 0),
+                timeColor = o.optLong("timeColor", 0),
+                showTime = o.optBoolean("showTime", true),
+                timeBold = o.optBoolean("timeBold", false),
+                showNotifs = o.optBoolean("showNotifs", true),
+                showWifi = o.optBoolean("showWifi", true),
+                showCell = o.optBoolean("showCell", true),
+                showNetType = o.optBoolean("showNetType", false),
+                showAirplane = o.optBoolean("showAirplane", true),
+                wifiStyle = o.optString("wifiStyle", d.wifiStyle),
+                cellStyle = o.optString("cellStyle", d.cellStyle),
+                iconScale = f("iconScale", 1f, 0.8f, 1.3f),
+                timeScale = f("timeScale", 1f, 0.8f, 1.3f),
+                notch = o.optString("notch", d.notch),
+                notchSize = f("notchSize", 1f, 0.8f, 1.6f),
+                notchColor = o.optLong("notchColor", d.notchColor),
+                barGestures = o.optBoolean("barGestures", false),
+                barTap = o.optString("barTap", d.barTap),
+                barLongPress = o.optString("barLong", d.barLongPress),
+                barSwipeDown = o.optString("barDown", d.barSwipeDown),
+                barSwipeLeft = o.optString("barLeft", d.barSwipeLeft),
+                barSwipeRight = o.optString("barRight", d.barSwipeRight),
+                chargeAnim = o.optString("chargeAnim", d.chargeAnim),
+            )
+        }
     }
+}
+
+/** Ready-made looks: a whole style in one tap (your emoji choice is kept unless the preset has its own). */
+enum class BarPreset(val label: String, val apply: (EmojiBatteryStyle) -> EmojiBatteryStyle) {
+    Classic("Classic", { it.copy(bar = BarMode.Full.id, bgMode = "solid", background = 0xFF000000, iconColor = 0, timeColor = 0, notch = "none", theme = BatteryTheme.Faces.id, layout = BatteryLayout.Beside.id) }),
+    Love("Love", { it.copy(bar = BarMode.Full.id, bgMode = "gradient", background = 0xFFFF4F8B, background2 = 0xFFFFA3C4, iconColor = 0xFFFFFFFF, timeColor = 0xFFFFFFFF, theme = BatteryTheme.Hearts.id, layout = BatteryLayout.Beside.id, fill = 0xFFFFFFFF.toString(), notch = "ring", notchColor = 0xFFFFFFFF) }),
+    Kawaii("Kawaii", { it.copy(bar = BarMode.Full.id, bgMode = "solid", background = 0xFFFFE4EF, iconColor = 0xFFB0326B, timeColor = 0xFFB0326B, theme = BatteryTheme.Cats.id, layout = BatteryLayout.Inside.id, fill = 0xFFFF8FB8.toString(), notch = "pill", notchColor = 0xFF000000) }),
+    Ocean("Ocean", { it.copy(bar = BarMode.Full.id, bgMode = "gradient", background = 0xFF0D47A1, background2 = 0xFF00BCD4, iconColor = 0xFFFFFFFF, timeColor = 0xFFFFFFFF, theme = BatteryTheme.Weather.id, layout = BatteryLayout.Beside.id, fill = 0xFF80DEEA.toString(), notch = "none") }),
+    Neon("Neon", { it.copy(bar = BarMode.Full.id, bgMode = "solid", background = 0xFF000000, iconColor = 0xFF39FF14, timeColor = 0xFF39FF14, theme = BatteryTheme.Space.id, layout = BatteryLayout.Beside.id, fill = 0xFF39FF14.toString(), notch = "ring", notchColor = 0xFF39FF14, timeBold = true) }),
+    Sunset("Sunset", { it.copy(bar = BarMode.Full.id, bgMode = "gradient", background = 0xFFFF6F00, background2 = 0xFFD81B60, iconColor = 0xFFFFFFFF, timeColor = 0xFFFFFFFF, theme = BatteryTheme.Fire.id, layout = BatteryLayout.EmojiOnly.id, notch = "none") }),
+    Forest("Forest", { it.copy(bar = BarMode.Full.id, bgMode = "gradient", background = 0xFF1B5E20, background2 = 0xFF66BB6A, iconColor = 0xFFFFFFFF, timeColor = 0xFFFFFFFF, theme = BatteryTheme.Plants.id, layout = BatteryLayout.Beside.id, fill = 0xFFC5E1A5.toString(), notch = "none") }),
+    Night("Night", { it.copy(bar = BarMode.Full.id, bgMode = "gradient", background = 0xFF0B0B2B, background2 = 0xFF3A1C71, iconColor = 0xFFE0E0FF, timeColor = 0xFFE0E0FF, theme = BatteryTheme.Moon.id, layout = BatteryLayout.Big.id, notch = "notch", notchColor = 0xFF000000) }),
+    Sticker("Just the emoji", { it.copy(bar = BarMode.Sticker.id, theme = BatteryTheme.Faces.id, layout = BatteryLayout.Beside.id) }),
 }
 
 /** The emoji battery's settings, shared by the launcher, the status bar overlay and the widget. */
@@ -212,7 +300,7 @@ object BatteryHub {
     }
 }
 
-data class NetState(val wifi: Int = -1, val cell: Int = -1, val airplane: Boolean = false)
+data class NetState(val wifi: Int = -1, val cell: Int = -1, val airplane: Boolean = false, val netType: String? = null)
 
 /** Wi-Fi and mobile signal bars for the full status bar (0–4, or -1 when off). */
 object NetHub {
@@ -241,7 +329,27 @@ object NetHub {
     fun pollCell(context: Context) {
         val tm = context.getSystemService(TelephonyManager::class.java)
         val level = runCatching { tm?.signalStrength?.level ?: -1 }.getOrDefault(-1)
-        _state.value = _state.value.copy(cell = if (tm?.simState == TelephonyManager.SIM_STATE_READY) level.coerceIn(0, 4) else -1)
+        val airplane = runCatching {
+            android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.AIRPLANE_MODE_ON, 0) == 1
+        }.getOrDefault(false)
+        val type = if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_PHONE_STATE) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) runCatching { netLabel(tm?.dataNetworkType ?: 0) }.getOrNull() else null
+        _state.value = _state.value.copy(
+            cell = if (tm?.simState == TelephonyManager.SIM_STATE_READY && !airplane) level.coerceIn(0, 4) else -1,
+            airplane = airplane,
+            netType = if (_state.value.wifi >= 0) null else type,
+        )
+    }
+
+    private fun netLabel(t: Int): String? = when (t) {
+        TelephonyManager.NETWORK_TYPE_NR -> "5G"
+        TelephonyManager.NETWORK_TYPE_LTE -> "LTE"
+        TelephonyManager.NETWORK_TYPE_HSPAP, TelephonyManager.NETWORK_TYPE_HSPA, TelephonyManager.NETWORK_TYPE_HSDPA,
+        TelephonyManager.NETWORK_TYPE_HSUPA, TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
+        TelephonyManager.NETWORK_TYPE_EDGE, TelephonyManager.NETWORK_TYPE_GPRS -> "E"
+        TelephonyManager.NETWORK_TYPE_UNKNOWN -> null
+        else -> null
     }
 
     private fun refresh(context: Context, caps: NetworkCapabilities?) {
